@@ -219,6 +219,62 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
               </div>
             )}
           </GlassCard>
+
+          {/* Time-of-day shadow scrubber */}
+          {viewMode === '3d' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass rounded-xl px-4 py-3 flex flex-col gap-2"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock size={14} className="text-solar-amber" />
+                  <span className="text-xs font-semibold text-solar-text">Shadow Timeline</span>
+                </div>
+                <span className="font-mono-data text-sm text-solar-amber">{formatTime(timeOfDay)}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={24}
+                step={0.25}
+                value={timeOfDay}
+                onChange={(e) => setTimeOfDay(Number(e.target.value))}
+                className="w-full accent-solar-amber h-2"
+              />
+              <div className="flex justify-between text-[9px] text-solar-muted font-mono-data">
+                <span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span>
+              </div>
+              {showShadowAnalysis && (
+                <div className="flex gap-3 mt-1">
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <Building2 size={10} className="text-solar-indigo" />
+                    <span className="text-solar-muted">6 buildings</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <TreePine size={10} className="text-solar-green" />
+                    <span className="text-solar-muted">5 trees</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    {isNightTime ? (
+                      <AlertTriangle size={10} className="text-solar-danger" />
+                    ) : (
+                      <Sun size={10} className="text-solar-amber" />
+                    )}
+                    <span className={isNightTime ? 'text-solar-danger' : 'text-solar-muted'}>
+                      {isNightTime ? 'No sun' : `Shadow impact: ${shadowImpactPct}%`}
+                    </span>
+                  </div>
+                  {!isNightTime && (
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-solar-muted">Shadow length: {shadowMultiplier}×</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
         </div>
 
         {/* Stats sidebar */}
