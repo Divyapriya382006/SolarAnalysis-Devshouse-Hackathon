@@ -108,7 +108,7 @@ export default function Index() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
           >
-            <ARDesigner onCommit={handleCommitLayout} />
+            <ARDesigner onCommit={handleCommitLayout} address={address} />
             <EnergyPrediction systemData={systemData} />
             <CostCalculator systemData={systemData} />
             <DigitalTwin systemData={systemData} />
