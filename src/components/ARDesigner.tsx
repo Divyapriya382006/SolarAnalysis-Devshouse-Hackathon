@@ -314,6 +314,29 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
             <div className="font-mono-data text-sm text-solar-green mt-1">{coverage}%</div>
           </GlassCard>
 
+          {/* Shadow analysis card */}
+          {showShadowAnalysis && (
+            <GlassCard delay={0.3} glow={isNightTime ? 'none' : shadowImpactPct > 40 ? 'none' : 'primary'}>
+              <div className="text-solar-muted text-xs uppercase tracking-wider mb-1">Shadow Analysis</div>
+              <div className="flex items-center gap-2 mt-2">
+                <div className={`w-3 h-3 rounded-full ${isNightTime ? 'bg-solar-danger' : shadowImpactPct > 40 ? 'bg-solar-amber' : 'bg-solar-green'}`} />
+                <span className="font-mono-data text-sm text-solar-text">
+                  {isNightTime ? 'Night' : shadowImpactPct > 40 ? 'High shadow' : 'Low shadow'}
+                </span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-muted mt-2">
+                <motion.div
+                  className={`h-full rounded-full ${isNightTime ? 'bg-solar-danger' : shadowImpactPct > 40 ? 'bg-solar-amber' : 'bg-solar-green'}`}
+                  style={{ width: `${100 - shadowImpactPct}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+              <div className="font-mono-data text-[10px] text-solar-muted mt-1">
+                {isNightTime ? 'No generation' : `${100 - shadowImpactPct}% usable sunlight`}
+              </div>
+            </GlassCard>
+          )}
+
           {panels.length > 0 && (
             <motion.button
               initial={{ opacity: 0, y: 20 }}
