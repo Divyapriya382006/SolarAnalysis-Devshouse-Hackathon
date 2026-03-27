@@ -4,7 +4,7 @@ import GlassCard from './GlassCard';
 import RooftopScene from './RooftopScene';
 import GoogleMapPreview from './GoogleMapPreview';
 import { useCountUp, formatIndian } from '@/hooks/useCountUp';
-import { Sun, Grid3X3, RotateCw, Lock, Eye, Map } from 'lucide-react';
+import { Sun, Grid3X3, RotateCw, Lock, Eye, Map, Clock, Building2, TreePine, AlertTriangle } from 'lucide-react';
 
 const panelTypes = [
   { name: 'Mono 400W', watt: 400, color: '#1a3a6e', efficiency: 21.5 },
@@ -23,7 +23,22 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
   const [snapGrid, setSnapGrid] = useState(true);
   const [nextId, setNextId] = useState(1);
   const [sunAngle, setSunAngle] = useState(50);
+  const [timeOfDay, setTimeOfDay] = useState(12);
   const [viewMode, setViewMode] = useState<'3d' | 'map'>('3d');
+  const [showShadowAnalysis, setShowShadowAnalysis] = useState(true);
+
+  // Shadow calculations
+  const sunElevation = Math.max(Math.sin(((timeOfDay - 6) / 12) * Math.PI), 0);
+  const shadowMultiplier = sunElevation > 0.05 ? (1 / Math.tan(sunElevation * (Math.PI / 2))).toFixed(1) : '∞';
+  const isNightTime = timeOfDay < 6 || timeOfDay > 18;
+  const shadowImpactPct = isNightTime ? 100 : Math.round(Math.max(0, (1 - sunElevation) * 60));
+  const formatTime = (h: number) => {
+    const hr = Math.floor(h);
+    const min = Math.round((h - hr) * 60);
+    const ampm = hr >= 12 ? 'PM' : 'AM';
+    const hr12 = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+    return `${hr12}:${min.toString().padStart(2, '0')} ${ampm}`;
+  };
 
   const totalKw = panels.reduce((sum, p) => sum + panelTypes[p.type].watt, 0) / 1000;
   const annualKwh = Math.round(totalKw * 1400);
@@ -141,20 +156,13 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
                 <Grid3X3 size={12} className="inline mr-1" />
                 Snap
               </button>
-              <div className="flex items-center gap-2">
-                <Sun size={12} className="text-solar-amber" />
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={sunAngle}
-                  onChange={(e) => setSunAngle(Number(e.target.value))}
-                  className="w-24 accent-solar-amber"
-                />
-                <span className="font-mono-data text-[10px] text-solar-amber">
-                  {Math.round((sunAngle / 100) * 180)}°
-                </span>
-              </div>
+              <button
+                onClick={() => setShowShadowAnalysis(!showShadowAnalysis)}
+                className={`px-3 py-1.5 text-xs rounded-lg glass transition-all ${showShadowAnalysis ? 'glow-primary text-solar-green' : 'text-solar-muted'}`}
+              >
+                <Building2 size={12} className="inline mr-1" />
+                Shadows
+              </button>
             </div>
           </div>
 
