@@ -15,9 +15,10 @@ const panelTypes = [
 interface ARDesignerProps {
   onCommit: (data: { panelCount: number; totalKw: number; annualKwh: number }) => void;
   address: string;
+  coordinates: { lat: number, lng: number };
 }
 
-export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
+export default function ARDesigner({ onCommit, address, coordinates }: ARDesignerProps) {
   const [panels, setPanels] = useState<Array<{ id: number; type: number; position: [number, number, number] }>>([]);
   const [selectedType, setSelectedType] = useState(0);
   const [snapGrid, setSnapGrid] = useState(true);
@@ -27,25 +28,10 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
   const [viewMode, setViewMode] = useState<'3d' | 'map'>('3d');
   const [showShadowAnalysis, setShowShadowAnalysis] = useState(true);
 
-  // --- GOOGLE MAPS GEOCODING API INTEGRATION ---
-  // /* Uncomment when adding API Key:
-  // const fetchCoordinates = async (addressStr: string) => {
-  //   const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressStr)}&key=YOUR_API_KEY`);
-  //   const data = await res.json();
-  //   return data.results[0].geometry.location;
-  // }; */
-  // --- HARDCODED FALLBACK FOR GEODATA ---
-  const cityCoords: Record<string, { lat: number; lng: number }> = {
-    'bengaluru': { lat: 12.9716, lng: 77.5946 }, 'bangalore': { lat: 12.9716, lng: 77.5946 },
-    'mumbai': { lat: 19.0760, lng: 72.8777 }, 'delhi': { lat: 28.7041, lng: 77.1025 },
-    'chennai': { lat: 13.0827, lng: 80.2707 }, 'hyderabad': { lat: 17.3850, lng: 78.4867 },
-    'kolkata': { lat: 22.5726, lng: 88.3639 }, 'pune': { lat: 18.5204, lng: 73.8567 },
-  };
-  const addressLower = (address || '').toLowerCase();
-  let lat = 20.5937; // Default India
-  for (const [key, coords] of Object.entries(cityCoords)) {
-    if (addressLower.includes(key)) { lat = coords.lat; break; }
-  }
+  // Use real coordinates from props
+  const lat = coordinates.lat;
+  const lng = coordinates.lng;
+
   // Optimal tilt is roughly equal to latitude in India
   const optimalTilt = Math.max(10, Math.min(35, lat)); 
   const optimalAzimuth = 180; // True South in Northern Hemisphere
@@ -209,7 +195,7 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
                 />
               </Suspense>
             ) : (
-              <GoogleMapPreview address={address} className="w-full h-full" />
+              <GoogleMapPreview address={address} lat={lat} lng={lng} className="w-full h-full" />
             )}
 
             {/* Overlay AR VR info */}
@@ -321,7 +307,7 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
           {/* Mini map in 3D mode */}
           {viewMode === '3d' && address && (
             <GlassCard className="p-0 overflow-hidden" hover={false}>
-              <GoogleMapPreview address={address} className="h-32" />
+              <GoogleMapPreview address={address} lat={lat} lng={lng} className="h-32" />
             </GlassCard>
           )}
 

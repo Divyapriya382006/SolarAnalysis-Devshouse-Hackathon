@@ -13,6 +13,7 @@ const defaultSystem = { panelCount: 8, totalKw: 3.2, annualKwh: 4480 };
 
 export default function Layout() {
   const [address, setAddress] = useState('');
+  const [coordinates, setCoordinates] = useState({ lat: 12.9716, lng: 77.5946 }); // Default Bengaluru
   const [systemData, setSystemData] = useState(defaultSystem);
   const [started, setStarted] = useState(false);
   const [showPersonalization, setShowPersonalization] = useState(false);
@@ -21,8 +22,9 @@ export default function Layout() {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
-  const handleAddressConfirm = (addr: string) => {
+  const handleAddressConfirm = (addr: string, coords: { lat: number, lng: number }) => {
     setAddress(addr);
+    setCoordinates(coords);
     setStarted(true);
     setTimeout(() => navigate('/ar-designer'), 500);
   };
@@ -80,7 +82,7 @@ export default function Layout() {
            exit={{ opacity: 0, y: -10 }}
            transition={{ duration: 0.3 }}
         >
-          <Outlet context={{ address, started, systemData, handleAddressConfirm, handleCommitLayout }} />
+          <Outlet context={{ address, coordinates, started, systemData, handleAddressConfirm, handleCommitLayout }} />
         </motion.div>
       </main>
 

@@ -21,6 +21,7 @@ const defaultSystem = { panelCount: 8, totalKw: 3.2, annualKwh: 4480 };
 export default function Index() {
   const [activeSection, setActiveSection] = useState('hero');
   const [address, setAddress] = useState('');
+  const [coordinates, setCoordinates] = useState({ lat: 12.9716, lng: 77.5946 });
   const [systemData, setSystemData] = useState(defaultSystem);
   const [started, setStarted] = useState(false);
   const [showPersonalization, setShowPersonalization] = useState(false);
@@ -30,8 +31,9 @@ export default function Index() {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  const handleAddressConfirm = (addr: string) => {
+  const handleAddressConfirm = (addr: string, coords: { lat: number, lng: number }) => {
     setAddress(addr);
+    setCoordinates(coords);
     setStarted(true);
     setTimeout(() => handleNavigate('ar-designer'), 500);
   };
@@ -115,7 +117,7 @@ export default function Index() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
           >
-            <ARDesigner onCommit={handleCommitLayout} address={address} />
+            <ARDesigner onCommit={handleCommitLayout} address={address} coordinates={coordinates} />
             <EnergyPrediction systemData={systemData} />
             <CostCalculator systemData={systemData} />
             <DigitalTwin systemData={systemData} />

@@ -6,33 +6,68 @@ import TypewriterText from './TypewriterText';
 import SolarLogo from './SolarLogo';
 
 const mockAddresses = [
-  "Prestige Lakeside Habitat, Whitefield, Bengaluru - 560066",
-  "DLF Phase 5, Sector 43, Gurugram - 122003",
-  "Hiranandani Gardens, Powai, Mumbai - 400076",
-  "Adyar, Chennai - 600020",
-  "Salt Lake City, Sector V, Kolkata - 700091",
-  "Banjara Hills, Road No. 12, Hyderabad - 500034",
-  "Aundh, Pune - 411007",
-  "Gomti Nagar, Lucknow - 226010",
+  "Shanti Niketan, Sector 21, New Delhi - 110021",
+  "Ocean View Apartments, Marine Drive, Mumbai - 400020",
+  "Green Valley Residency, Whitefield, Bengaluru - 560066",
+  "Maple Leaf Colony, Anna Nagar, Chennai - 600040",
+  "Ruby Heights, Banjara Hills, Hyderabad - 500034",
+  "Silver Oak Estate, Aundh, Pune - 411007",
+  "Heritage Square, Salt Lake, Kolkata - 700091",
+  "Sunrise Society, Gomti Nagar, Lucknow - 226010",
 ];
 
 interface HeroSectionProps {
-  onAddressConfirm: (address: string) => void;
+  onAddressConfirm: (address: string, coords: { lat: number, lng: number }) => void;
 }
 
 export default function HeroSection({ onAddressConfirm }: HeroSectionProps) {
   const [query, setQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const filtered = mockAddresses.filter(a =>
-    a.toLowerCase().includes(query.toLowerCase())
-  );
+  const handleSearch = async (addr: string) => {
+    setLoading(true);
+    try {
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1`);
+      const data = await resp.json();
+      if (data && data.length > 0) {
+        onAddressConfirm(addr, { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+      } else {
+        // Fallback to Bengaluru if search fails
+        onAddressConfirm(addr, { lat: 12.9716, lng: 77.5946 });
+      }
+    } catch (e) {
+      onAddressConfirm(addr, { lat: 12.9716, lng: 77.5946 });
+    }
+    setLoading(false);
+  };
+
+  const handleLocate = () => {
+    if (!navigator.geolocation) return;
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      try {
+        const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+        const data = await resp.json();
+        const addr = data.display_name || `Location at ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+        onAddressConfirm(addr, { lat: latitude, lng: longitude });
+      } catch (e) {
+        onAddressConfirm(`Current Location (${latitude.toFixed(2)}, ${longitude.toFixed(2)})`, { lat: latitude, lng: longitude });
+      }
+      setLoading(false);
+    });
+  };
 
   const handleSelect = (address: string) => {
     setQuery(address);
     setShowSuggestions(false);
-    onAddressConfirm(address);
+    handleSearch(address);
   };
+
+  const filtered = mockAddresses.filter(a =>
+    a.toLowerCase().includes(query.toLowerCase())
+  );
 
   return (
     <section id="hero" className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -89,16 +124,13 @@ export default function HeroSection({ onAddressConfirm }: HeroSectionProps) {
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
                 onFocus={() => setShowSuggestions(true)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch(query)}
                 className="flex-1 bg-transparent text-solar-text placeholder:text-solar-muted outline-none text-base"
               />
+              {loading && <div className="w-4 h-4 border-2 border-solar-green border-t-transparent animate-spin rounded-full mr-3" />}
               <button
-                onClick={() => {
-                  if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(() => {
-                      handleSelect("Current Location — Bengaluru, Karnataka");
-                    });
-                  }
-                }}
+                onClick={handleLocate}
+                disabled={loading}
                 className="flex items-center gap-1 text-solar-green text-sm hover:underline ml-3 flex-shrink-0"
               >
                 <MapPin size={14} />
