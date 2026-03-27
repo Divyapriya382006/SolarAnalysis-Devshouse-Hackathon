@@ -1,25 +1,29 @@
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import GlassCard from './GlassCard';
+import RooftopScene from './RooftopScene';
+import GoogleMapPreview from './GoogleMapPreview';
 import { useCountUp, formatIndian } from '@/hooks/useCountUp';
-import { Zap, Sun, Grid3X3, RotateCw, Trash2, Lock } from 'lucide-react';
+import { Sun, Grid3X3, RotateCw, Lock, Eye, Map } from 'lucide-react';
 
 const panelTypes = [
-  { name: 'Mono 400W', watt: 400, color: '#1a1a2e', efficiency: 21.5 },
-  { name: 'Poly 330W', watt: 330, color: '#1e3a5f', efficiency: 17.8 },
-  { name: 'Bifacial 450W', watt: 450, color: '#0d2137', efficiency: 23.1 },
+  { name: 'Mono 400W', watt: 400, color: '#1a3a6e', efficiency: 21.5 },
+  { name: 'Poly 330W', watt: 330, color: '#1e5a3f', efficiency: 17.8 },
+  { name: 'Bifacial 450W', watt: 450, color: '#2a1a5e', efficiency: 23.1 },
 ];
 
 interface ARDesignerProps {
   onCommit: (data: { panelCount: number; totalKw: number; annualKwh: number }) => void;
+  address: string;
 }
 
-export default function ARDesigner({ onCommit }: ARDesignerProps) {
-  const [panels, setPanels] = useState<Array<{ type: number; x: number; y: number; id: number }>>([]);
+export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
+  const [panels, setPanels] = useState<Array<{ id: number; type: number; position: [number, number, number] }>>([]);
   const [selectedType, setSelectedType] = useState(0);
   const [snapGrid, setSnapGrid] = useState(true);
   const [nextId, setNextId] = useState(1);
   const [sunAngle, setSunAngle] = useState(50);
+  const [viewMode, setViewMode] = useState<'3d' | 'map'>('3d');
 
   const totalKw = panels.reduce((sum, p) => sum + panelTypes[p.type].watt, 0) / 1000;
   const annualKwh = Math.round(totalKw * 1400);
@@ -30,14 +34,18 @@ export default function ARDesigner({ onCommit }: ARDesignerProps) {
   const annualKwhDisplay = useCountUp(annualKwh, 800, 0, true);
 
   const addPanel = () => {
-    const x = 50 + (panels.length % 8) * 70;
-    const y = 50 + Math.floor(panels.length / 8) * 50;
-    setPanels([...panels, { type: selectedType, x, y, id: nextId }]);
+    const col = panels.length % 6;
+    const row = Math.floor(panels.length / 6);
+    setPanels([...panels, {
+      type: selectedType,
+      position: [-2.5 + col * 1.2, 0, -2 + row * 1.0],
+      id: nextId,
+    }]);
     setNextId(nextId + 1);
   };
 
-  const removePanel = (id: number) => {
-    setPanels(panels.filter(p => p.id !== id));
+  const removeLastPanel = () => {
+    setPanels(panels.slice(0, -1));
   };
 
   return (
@@ -57,7 +65,7 @@ export default function ARDesigner({ onCommit }: ARDesignerProps) {
         viewport={{ once: true }}
         transition={{ delay: 0.2 }}
       >
-        Design your solar layout interactively. Place panels, check shading, and optimize your rooftop.
+        Design your solar layout on an interactive 3D rooftop. Place panels, adjust sun position, and optimize placement.
       </motion.p>
 
       <div className="flex flex-col lg:flex-row gap-6">
@@ -80,6 +88,7 @@ export default function ARDesigner({ onCommit }: ARDesignerProps) {
                 </div>
                 <div className="font-mono-data text-xs text-solar-green">{pt.watt}W</div>
                 <div className="text-[10px] text-solar-muted">{pt.name}</div>
+                <div className="text-[9px] text-solar-muted">{pt.efficiency}% eff</div>
               </button>
             </GlassCard>
           ))}
@@ -89,135 +98,144 @@ export default function ARDesigner({ onCommit }: ARDesignerProps) {
           >
             + Add Panel
           </button>
+          {panels.length > 0 && (
+            <button
+              onClick={removeLastPanel}
+              className="w-full py-2 glass rounded-xl text-solar-danger text-xs hover:border-solar-danger/30 transition-all"
+              style={{ color: '#EF4444' }}
+            >
+              Remove Last
+            </button>
+          )}
         </div>
 
-        {/* 3D Viewport (simulated) */}
-        <GlassCard className="flex-1 min-h-[400px] lg:min-h-[500px] relative overflow-hidden" hover={false}>
-          {/* Grid */}
-          <div className="absolute inset-4 grid-overlay rounded-lg" style={{ opacity: 0.3 }} />
-
-          {/* Rooftop base */}
-          <div className="absolute inset-6 rounded-lg" style={{
-            background: 'linear-gradient(135deg, rgba(30,40,60,0.8), rgba(20,30,50,0.9))',
-            border: '2px solid rgba(255,255,255,0.1)',
-            perspective: '1000px',
-            transform: 'perspective(1000px) rotateX(15deg) rotateY(-5deg)',
-          }}>
-            {/* Exclusion zones */}
-            <div className="absolute inset-0 border-4 border-solar-danger/20 rounded-lg pointer-events-none" />
-
-            {/* Water tank */}
-            <div className="absolute top-3 right-3 w-16 h-12 rounded glass flex items-center justify-center"
-              style={{ border: '1px solid rgba(245,158,11,0.4)' }}
-            >
-              <span className="text-[8px] text-solar-amber">Tank</span>
-            </div>
-
-            {/* Staircase head */}
-            <div className="absolute bottom-3 left-3 w-14 h-10 rounded glass flex items-center justify-center"
-              style={{ border: '1px solid rgba(245,158,11,0.4)' }}
-            >
-              <span className="text-[8px] text-solar-amber">Stairs</span>
-            </div>
-
-            {/* Placed panels */}
-            {panels.map((panel) => (
-              <motion.div
-                key={panel.id}
-                initial={{ y: -50, opacity: 0, scale: 0.8 }}
-                animate={{ y: 0, opacity: 1, scale: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                className="absolute cursor-pointer group"
-                style={{ left: panel.x, top: panel.y }}
-                onClick={() => removePanel(panel.id)}
+        {/* Main viewport area */}
+        <div className="flex-1 flex flex-col gap-4">
+          {/* View toggle + controls bar */}
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('3d')}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  viewMode === '3d' ? 'bg-solar-green text-solar-navy' : 'glass text-solar-muted hover:text-solar-text'
+                }`}
               >
-                <div
-                  className="w-14 h-9 rounded-sm relative"
-                  style={{
-                    background: panelTypes[panel.type].color,
-                    border: '1px solid rgba(0,229,160,0.4)',
-                    boxShadow: '0 0 10px rgba(0,229,160,0.15)',
-                  }}
-                >
-                  <div className="absolute inset-0 grid grid-cols-3 gap-px p-0.5">
-                    {[...Array(6)].map((_, j) => (
-                      <div key={j} className="bg-solar-green/10 rounded-sm" />
-                    ))}
-                  </div>
-                  <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-solar-danger opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <Trash2 size={6} className="text-foreground" />
+                <Eye size={14} />
+                3D Rooftop
+              </button>
+              <button
+                onClick={() => setViewMode('map')}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  viewMode === 'map' ? 'bg-solar-green text-solar-navy' : 'glass text-solar-muted hover:text-solar-text'
+                }`}
+              >
+                <Map size={14} />
+                Location Map
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSnapGrid(!snapGrid)}
+                className={`px-3 py-1.5 text-xs rounded-lg glass transition-all ${snapGrid ? 'glow-primary text-solar-green' : 'text-solar-muted'}`}
+              >
+                <Grid3X3 size={12} className="inline mr-1" />
+                Snap
+              </button>
+              <div className="flex items-center gap-2">
+                <Sun size={12} className="text-solar-amber" />
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={sunAngle}
+                  onChange={(e) => setSunAngle(Number(e.target.value))}
+                  className="w-24 accent-solar-amber"
+                />
+                <span className="font-mono-data text-[10px] text-solar-amber">
+                  {Math.round((sunAngle / 100) * 180)}°
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Viewport */}
+          <GlassCard className="h-[450px] lg:h-[520px] relative overflow-hidden p-0" hover={false}>
+            {viewMode === '3d' ? (
+              <Suspense fallback={
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-12 h-12 rounded-full border-2 border-solar-green border-t-transparent animate-spin mx-auto mb-3" />
+                    <p className="text-solar-muted text-sm">Loading 3D scene...</p>
                   </div>
                 </div>
-              </motion.div>
-            ))}
+              }>
+                <RooftopScene
+                  panels={panels}
+                  sunAngle={sunAngle}
+                  panelColors={panelTypes.map(p => p.color)}
+                />
+              </Suspense>
+            ) : (
+              <GoogleMapPreview address={address} className="w-full h-full" />
+            )}
 
-            {/* Empty state */}
-            {panels.length === 0 && (
+            {/* Overlay info */}
+            <div className="absolute top-3 left-3 glass rounded-lg px-3 py-1.5 text-[10px] text-solar-muted">
+              {viewMode === '3d' ? 'Drag to orbit • Scroll to zoom • Right-click to pan' : 'Satellite location preview'}
+            </div>
+
+            {/* Panel count badge */}
+            {panels.length > 0 && (
               <motion.div
-                className="absolute inset-0 flex items-center justify-center"
-                animate={{ opacity: [0.3, 0.7, 0.3] }}
-                transition={{ duration: 2, repeat: Infinity }}
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute top-3 right-3 glass rounded-lg px-3 py-1.5 flex items-center gap-2"
               >
-                <div className="text-center">
-                  <Grid3X3 size={32} className="text-solar-green mx-auto mb-2" />
-                  <p className="text-solar-muted text-sm">Click "Add Panel" to begin</p>
-                </div>
+                <span className="w-2 h-2 rounded-full bg-solar-green" />
+                <span className="font-mono-data text-xs text-solar-green">{panels.length} panels placed</span>
               </motion.div>
             )}
-          </div>
 
-          {/* Sun position */}
-          <motion.div
-            className="absolute top-4 right-4"
-            animate={{ y: [0, -5, 0] }}
-            transition={{ duration: 3, repeat: Infinity }}
-          >
-            <Sun size={24} className="text-solar-amber" style={{ filter: 'drop-shadow(0 0 10px rgba(245,158,11,0.5))' }} />
-          </motion.div>
-
-          {/* Controls */}
-          <div className="absolute bottom-4 left-4 flex gap-2">
-            <button
-              onClick={() => setSnapGrid(!snapGrid)}
-              className={`px-3 py-1.5 text-xs rounded-lg glass transition-all ${snapGrid ? 'glow-primary text-solar-green' : 'text-solar-muted'}`}
-            >
-              <Grid3X3 size={12} className="inline mr-1" />
-              Snap
-            </button>
-            <button className="px-3 py-1.5 text-xs rounded-lg glass text-solar-muted hover:text-solar-green transition-colors">
-              <RotateCw size={12} className="inline mr-1" />
-              Rotate
-            </button>
-          </div>
-
-          {/* Sun slider */}
-          <div className="absolute bottom-4 right-4 flex items-center gap-2">
-            <Sun size={12} className="text-solar-amber" />
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={sunAngle}
-              onChange={(e) => setSunAngle(Number(e.target.value))}
-              className="w-20 accent-solar-amber"
-            />
-          </div>
-        </GlassCard>
+            {/* Empty state */}
+            {panels.length === 0 && viewMode === '3d' && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                <motion.div
+                  animate={{ y: [0, -5, 0] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="glass rounded-xl px-4 py-2 text-xs text-solar-green flex items-center gap-2"
+                >
+                  <span>↑</span>
+                  Click "Add Panel" to place solar panels on the roof
+                </motion.div>
+              </div>
+            )}
+          </GlassCard>
+        </div>
 
         {/* Stats sidebar */}
-        <div className="lg:w-64 flex flex-col gap-4">
+        <div className="lg:w-56 flex flex-col gap-4">
+          {/* Mini map in 3D mode */}
+          {viewMode === '3d' && address && (
+            <GlassCard className="p-0 overflow-hidden" hover={false}>
+              <GoogleMapPreview address={address} className="h-32" />
+            </GlassCard>
+          )}
+
           <GlassCard delay={0.1}>
             <div className="text-solar-muted text-xs uppercase tracking-wider mb-1">Panels</div>
             <div className="font-mono-data text-3xl text-solar-green">{panelCount}</div>
           </GlassCard>
           <GlassCard delay={0.15}>
             <div className="text-solar-muted text-xs uppercase tracking-wider mb-1">Total Capacity</div>
-            <div className="font-mono-data text-3xl text-solar-green">{(totalKwDisplay / 100).toFixed(1)} <span className="text-base">kW</span></div>
+            <div className="font-mono-data text-3xl text-solar-green">
+              {(totalKwDisplay / 100).toFixed(1)} <span className="text-base">kW</span>
+            </div>
           </GlassCard>
           <GlassCard delay={0.2}>
             <div className="text-solar-muted text-xs uppercase tracking-wider mb-1">Est. Annual</div>
-            <div className="font-mono-data text-2xl text-solar-amber">{formatIndian(annualKwhDisplay)} <span className="text-sm">kWh</span></div>
+            <div className="font-mono-data text-2xl text-solar-amber">
+              {formatIndian(annualKwhDisplay)} <span className="text-sm">kWh</span>
+            </div>
           </GlassCard>
           <GlassCard delay={0.25}>
             <div className="text-solar-muted text-xs uppercase tracking-wider mb-1">Coverage</div>
