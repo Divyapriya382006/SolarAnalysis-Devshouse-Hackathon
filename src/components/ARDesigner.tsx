@@ -181,6 +181,7 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
                   panels={panels}
                   sunAngle={sunAngle}
                   panelColors={panelTypes.map(p => p.color)}
+                  timeOfDay={timeOfDay}
                 />
               </Suspense>
             ) : (
