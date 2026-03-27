@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import GlassCard from './GlassCard';
-import { FileText, Download, Share2, Check, Globe, Loader2 } from 'lucide-react';
+import { FileText, Download, Share2, Check, Globe, Loader2, ShieldAlert, CheckCircle2, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { generateGoogleCalendarUrl } from '@/lib/calendar';
 
 const languages = ['English', 'Hindi', 'Tamil', 'Telugu'];
 
@@ -24,6 +25,16 @@ export default function ReportGenerator() {
   );
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
+  const [analysis, setAnalysis] = useState<any>(null);
+
+  useEffect(() => {
+    const cached = localStorage.getItem('solar_rules_analysis');
+    if (cached) {
+      try {
+        setAnalysis(JSON.parse(cached));
+      } catch (e) {}
+    }
+  }, []);
 
   const toggleSection = (name: string) => {
     setIncludedSections(prev => ({ ...prev, [name]: !prev[name] }));
@@ -41,6 +52,8 @@ export default function ReportGenerator() {
         style: { background: '#111827', color: '#F0F4FF', border: '1px solid rgba(0,229,160,0.3)' },
         iconTheme: { primary: '#00E5A0', secondary: '#0A0F1E' },
       });
+      // Trigger print dialog for PDF download
+      setTimeout(() => window.print(), 500);
     }, 2000);
   };
 
@@ -87,36 +100,205 @@ export default function ReportGenerator() {
             <span className="ml-auto text-xs font-mono-data text-solar-muted">{pageCount} pages</span>
           </div>
           <div className="flex-1 rounded-xl bg-foreground/5 p-6 relative overflow-hidden">
-            {/* Mock report preview */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 border-b border-border/30 pb-4">
-                <div className="w-8 h-8 rounded bg-solar-green/20" />
+            {/* Printable Report content */}
+            <div id="print-area" className="bg-white text-black p-6 rounded relative min-h-[400px] overflow-hidden shadow-sm text-[11px] leading-relaxed">
+              
+              {/* ── Header ── */}
+              <div className="flex items-center gap-3 border-b-2 border-emerald-500 pb-4 mb-5">
+                <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center">
+                  <span className="text-white font-black text-base">☀</span>
+                </div>
                 <div>
-                  <div className="text-sm font-bold">Solar Bharat AI</div>
-                  <div className="text-[10px] text-solar-muted">Rooftop Solar Analysis Report</div>
+                  <div className="text-base font-black text-gray-900">Sunwise Harmony</div>
+                  <div className="text-[10px] text-gray-500 font-medium">Personalised Rooftop Solar Analysis & Compliance Report</div>
+                </div>
+                <div className="ml-auto text-right text-[9px] text-gray-400">
+                  <div className="font-bold text-gray-600">Report Date</div>
+                  <div>{new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <div className="h-2 rounded bg-foreground/10 w-3/4" />
-                <div className="h-2 rounded bg-foreground/10 w-full" />
-                <div className="h-2 rounded bg-foreground/10 w-5/6" />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-16 rounded bg-foreground/5 border border-border/30" />
-                ))}
-              </div>
-              <div className="h-24 rounded bg-foreground/5 border border-border/30" />
-              <div className="space-y-2">
-                <div className="h-2 rounded bg-foreground/10 w-2/3" />
-                <div className="h-2 rounded bg-foreground/10 w-full" />
+
+              {analysis ? (
+                <>
+                  {/* ── Section 1: System Design (AR Layout) ── */}
+                  {analysis.systemData && (
+                    <div className="mb-5">
+                      <h4 className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-2 border-b border-emerald-100 pb-1">1. AR-Designed Solar System</h4>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Panel Count', value: `${analysis.systemData.panelCount} panels` },
+                          { label: 'System Capacity', value: `${analysis.systemData.totalKw} kWp` },
+                          { label: 'Annual Generation', value: `${analysis.systemData.annualKwh?.toLocaleString('en-IN') ?? '--'} kWh/yr` },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="bg-emerald-50 border border-emerald-100 rounded p-2 text-center">
+                            <div className="font-black text-emerald-800 text-sm">{value}</div>
+                            <div className="text-[9px] text-gray-500 uppercase tracking-widest mt-0.5">{label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Section 2: User Personalization Inputs ── */}
+                  <div className="mb-5">
+                    <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-2 border-b border-blue-100 pb-1">2. Customer Personalization Inputs</h4>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                      {[
+                        { label: 'Setup Type',         value: analysis.inputs?.setupType,        format: (v: string) => v === 'domestic' ? '🏠 Domestic (Residential)' : '🏢 Commercial' },
+                        { label: 'Roof Ownership',      value: analysis.inputs?.roofOwnership,    format: (v: string) => v === 'owned' ? '✅ Fully Owned' : '⚠️ Rented / Shared' },
+                        { label: 'Grid Approval Status',value: analysis.inputs?.gridApproval,     format: (v: string) => ({ approved: '✅ Approved', pending: '⏳ Pending', none: '❌ Not Applied' }[v] ?? v) },
+                        { label: 'Sanctioned Load',     value: analysis.inputs?.sanctionedLoad,   format: (v: any) => `${v} kW` },
+                        { label: 'Shadow Conditions',   value: analysis.inputs?.shadows,          format: (v: string) => ({ none: '☀️ No Shadows', minor: '🌤 Minor Shadows', significant: '⛅ Significant Shadows' }[v] ?? v) },
+                        { label: 'Inverter Quality',    value: analysis.inputs?.inverterQuality,  format: (v: string) => ({ premium: '⚡ Premium (Tier 1)', standard: '✔️ Standard', budget: '⚠️ Budget' }[v] ?? v) },
+                      ].map(({ label, value, format }) => (
+                        <div key={label} className="flex justify-between border-b border-gray-100 pb-1">
+                          <span className="text-gray-500 font-medium">{label}</span>
+                          <span className="font-bold text-gray-900 text-right">{value ? format(value) : '--'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Section 3: Compliance Rules ── */}
+                  <div className="mb-5">
+                    <h4 className="text-[10px] font-black text-orange-700 uppercase tracking-widest mb-2 border-b border-orange-100 pb-1">3. Regulatory Compliance Analysis</h4>
+                    <div className="space-y-2">
+                      {analysis.rules?.map((rule: any, i: number) => (
+                        <div key={i} className={`p-2.5 rounded border flex gap-2 ${rule.type === 'success' ? 'bg-green-50 border-green-200 text-green-900' : rule.type === 'danger' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-orange-50 border-orange-200 text-orange-900'}`}>
+                          <span className="text-sm">{rule.type === 'success' ? '✅' : rule.type === 'danger' ? '🚨' : '⚠️'}</span>
+                          <div>
+                            <div className="font-black text-[10px]">{rule.title}</div>
+                            <div className="text-[10px] opacity-90 mt-0.5">{rule.desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Section 4: Financial Projections ── */}
+                  {includedSections['Cost Breakdown'] && analysis.systemData && (() => {
+                    const kW = analysis.systemData.totalKw ?? 3.2;
+                    const installCost = Math.round(kW * 1000 * 45);
+                    const annualKwh = analysis.systemData.annualKwh ?? Math.round(kW * 1400);
+                    const annualSaving = Math.round(annualKwh * 6);
+                    const subsidy = analysis.inputs?.setupType === 'domestic' ? (kW <= 2 ? 30000 : kW <= 3 ? 60000 : 78000) : 0;
+                    const netCost = installCost - subsidy;
+                    const payback = Math.round(netCost / annualSaving * 10) / 10;
+                    const saving25yr = annualSaving * 25 - netCost;
+                    return (
+                      <div className="mb-5">
+                        <h4 className="text-[10px] font-black text-purple-700 uppercase tracking-widest mb-2 border-b border-purple-100 pb-1">4. Financial Projections</h4>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          {[
+                            { label: 'Gross Installation Cost', value: `₹${installCost.toLocaleString('en-IN')}` },
+                            { label: 'PM Surya Ghar Subsidy', value: subsidy > 0 ? `– ₹${subsidy.toLocaleString('en-IN')}` : 'Not Applicable', highlight: subsidy > 0 },
+                            { label: 'Net Investment', value: `₹${netCost.toLocaleString('en-IN')}`, strong: true },
+                            { label: 'Annual Electricity Savings', value: `₹${annualSaving.toLocaleString('en-IN')}` },
+                            { label: 'Payback Period', value: `${payback} years`, strong: true },
+                            { label: 'Net 25-Yr Profit', value: `₹${saving25yr.toLocaleString('en-IN')}`, highlight: true },
+                          ].map(({ label, value, strong, highlight }) => (
+                            <div key={label} className={`flex justify-between border-b border-gray-100 pb-1 ${strong ? 'font-black' : ''}`}>
+                              <span className="text-gray-500">{label}</span>
+                              <span className={`font-bold ${highlight ? 'text-emerald-700' : 'text-gray-900'}`}>{value}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* With vs Without Solar */}
+                        <div className="flex border border-gray-200 rounded overflow-hidden mt-2">
+                          <div className="flex-1 p-2.5 bg-red-50 border-r border-gray-200">
+                            <div className="font-black text-red-800 text-[9px] uppercase tracking-widest mb-1.5">❌ Without Solar (25 yrs)</div>
+                            {[
+                              ['Grid Dependency', '100%'],
+                              ['Total Bills', `₹${(annualSaving * 25).toLocaleString('en-IN')}`],
+                              ['Tariff Risk', 'High (5–7%/yr)'],
+                              ['CO₂ Footprint', `~${(kW * 1.2 * 25).toFixed(0)} Tons`],
+                            ].map(([k, v]) => <div key={k} className="flex justify-between text-[9px] text-gray-800 border-b border-red-100 pb-0.5 mb-0.5"><span>{k}</span><span className="font-bold">{v}</span></div>)}
+                          </div>
+                          <div className="flex-1 p-2.5 bg-green-50">
+                            <div className="font-black text-green-800 text-[9px] uppercase tracking-widest mb-1.5">✅ With Solar (25 yrs)</div>
+                            {[
+                              ['Grid Dependency', '15–20%'],
+                              ['Total Bills', `₹${Math.round(annualSaving * 25 * 0.15).toLocaleString('en-IN')}`],
+                              ['Tariff Risk', 'Protected'],
+                              ['CO₂ Avoided', `~${(kW * 1.2 * 25).toFixed(0)} Tons`],
+                            ].map(([k, v]) => <div key={k} className="flex justify-between text-[9px] text-gray-800 border-b border-green-100 pb-0.5 mb-0.5"><span>{k}</span><span className="font-bold text-green-800">{v}</span></div>)}
+                          </div>
+                        </div>
+                        <div className="text-[9px] text-gray-400 text-right mt-1">Net 25-year saving vs no solar: ₹{saving25yr.toLocaleString('en-IN')}</div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── Section 5: Carbon & Environment ── */}
+                  {includedSections['Carbon Credits'] && analysis.systemData && (() => {
+                    const kW = analysis.systemData.totalKw ?? 3.2;
+                    const annualCO2 = Math.round(kW * 1400 * 0.82 / 1000 * 10) / 10;
+                    return (
+                      <div className="mb-5">
+                        <h4 className="text-[10px] font-black text-green-700 uppercase tracking-widest mb-2 border-b border-green-100 pb-1">5. Environmental Impact</h4>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          {[
+                            { label: 'Annual CO₂ Offset', value: `${annualCO2} T` },
+                            { label: '25-Year CO₂ Avoided', value: `${(annualCO2 * 25).toFixed(0)} T` },
+                            { label: 'Trees Equivalent', value: `${Math.round(annualCO2 * 25 / 0.022)}` },
+                          ].map(({ label, value }) => (
+                            <div key={label} className="bg-green-50 border border-green-100 rounded p-2">
+                              <div className="font-black text-green-800 text-sm">{value}</div>
+                              <div className="text-[9px] text-gray-500 mt-0.5">{label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── Section 6: Order Details (if placed) ── */}
+                  {(() => {
+                    const orders = JSON.parse(localStorage.getItem('sunwise_orders') || '[]');
+                    if (!orders.length) return null;
+                    const latest = orders[0];
+                    return (
+                      <div className="mb-5">
+                        <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-2 border-b border-indigo-100 pb-1">6. Purchase & Order Details</h4>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                          {[
+                            { label: 'Order ID',          value: latest.id },
+                            { label: 'Supplier',          value: latest.seller?.name },
+                            { label: 'Order Date',        value: new Date(latest.date).toLocaleDateString('en-IN') },
+                            { label: 'Order Status',      value: latest.status },
+                            { label: 'Installation',      value: latest.installationIncluded ? 'Included' : 'Not included' },
+                            { label: 'Total Paid',        value: `₹${latest.totalCost?.toLocaleString('en-IN')}` },
+                          ].map(({ label, value }) => (
+                            <div key={label} className="flex justify-between border-b border-gray-100 pb-1">
+                              <span className="text-gray-500">{label}</span>
+                              <span className="font-bold text-gray-900">{value ?? '--'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                  <div className="text-3xl mb-2">📋</div>
+                  <div className="text-sm font-bold">No data yet</div>
+                  <div className="text-xs mt-1">Complete the AR Designer & Compliance Check first</div>
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="border-t border-gray-200 pt-3 mt-4 flex items-center justify-between text-[9px] text-gray-400">
+                <span>Generated by Sunwise Harmony · {new Date().toLocaleString('en-IN')}</span>
+                <span className="font-mono">Language: {language}</span>
               </div>
             </div>
-            <div className="absolute bottom-4 right-4 text-xs font-mono-data text-solar-muted">
-              {language}
-            </div>
+
           </div>
         </GlassCard>
+
 
         {/* Configuration */}
         <div className="space-y-6">
@@ -199,22 +381,38 @@ export default function ReportGenerator() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex gap-3"
+              className="flex flex-col gap-3"
             >
-              {[
-                { label: 'WhatsApp', action: 'whatsapp' },
-                { label: 'Email', action: 'email' },
-                { label: 'Copy Link', action: 'copy' },
-              ].map((opt, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleShare(opt.action)}
-                  className="flex-1 py-2 glass rounded-lg text-xs text-solar-muted hover:text-solar-green transition-colors flex items-center justify-center gap-1"
-                >
-                  <Share2 size={12} />
-                  {opt.label}
-                </button>
-              ))}
+              <div className="flex gap-3">
+                {[
+                  { label: 'WhatsApp', action: 'whatsapp' },
+                  { label: 'Email', action: 'email' },
+                  { label: 'Copy Link', action: 'copy' },
+                ].map((opt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleShare(opt.action)}
+                    className="flex-1 py-2 glass rounded-lg text-xs text-solar-muted hover:text-solar-green transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Share2 size={12} />
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <a
+                href={generateGoogleCalendarUrl({
+                  title: 'Sunwise Solar System Maintenance',
+                  description: 'Yearly checkup and deep cleaning of your solar system.',
+                  startDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+                  endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1, new Date().getMonth(), new Date().getDate() + 1)),
+                  recurrenceRule: 'RRULE:FREQ=YEARLY;COUNT=25',
+                })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 glass rounded-xl border border-secondary/30 text-secondary hover:bg-secondary/10 transition-colors flex items-center justify-center gap-2 font-bold text-sm"
+              >
+                <Calendar size={16} /> Schedule 25-Year Maintenance Reminders
+              </a>
             </motion.div>
           )}
         </div>

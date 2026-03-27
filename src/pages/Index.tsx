@@ -13,6 +13,7 @@ import AIAssistant from '@/components/AIAssistant';
 import CarbonCredits from '@/components/CarbonCredits';
 import WeatherImpact from '@/components/WeatherImpact';
 import ReportGenerator from '@/components/ReportGenerator';
+import PersonalizationForm from '@/components/PersonalizationForm';
 import { useScrollProgress } from '@/hooks/useScrollProgress';
 
 const defaultSystem = { panelCount: 8, totalKw: 3.2, annualKwh: 4480 };
@@ -22,6 +23,7 @@ export default function Index() {
   const [address, setAddress] = useState('');
   const [systemData, setSystemData] = useState(defaultSystem);
   const [started, setStarted] = useState(false);
+  const [showPersonalization, setShowPersonalization] = useState(false);
   const scrollProgress = useScrollProgress();
 
   const handleNavigate = useCallback((id: string) => {
@@ -36,6 +38,11 @@ export default function Index() {
 
   const handleCommitLayout = (data: { panelCount: number; totalKw: number; annualKwh: number }) => {
     setSystemData(data);
+    setShowPersonalization(true);
+  };
+
+  const handlePersonalizationComplete = () => {
+    setShowPersonalization(false);
     setTimeout(() => handleNavigate('prediction'), 300);
   };
 
@@ -133,6 +140,14 @@ export default function Index() {
 
       {/* AI Assistant */}
       <AIAssistant />
+
+      {/* Rules Personalization Modal */}
+      {showPersonalization && (
+        <PersonalizationForm 
+          onComplete={handlePersonalizationComplete}
+          systemKw={systemData.totalKw}
+        />
+      )}
     </div>
   );
 }

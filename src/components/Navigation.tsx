@@ -2,10 +2,13 @@ import { motion } from 'framer-motion';
 import SolarLogo from './SolarLogo';
 import {
   Home, Box, BarChart3, Calculator, Clock, Map,
-  Activity, MessageCircle, Leaf, Cloud, FileText
+  Activity, MessageCircle, Leaf, Cloud, FileText,
+  ShoppingCart, Package, LayoutDashboard, LogOut
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import NotificationBell from '@/components/NotificationBell';
 
-const navItems = [
+const customerItems = [
   { icon: Home, label: 'Home', id: 'hero' },
   { icon: Box, label: 'AR Designer', id: 'ar-designer' },
   { icon: BarChart3, label: 'Prediction', id: 'prediction' },
@@ -17,6 +20,12 @@ const navItems = [
   { icon: Leaf, label: 'Carbon', id: 'carbon' },
   { icon: Cloud, label: 'Weather', id: 'weather' },
   { icon: FileText, label: 'Report', id: 'report' },
+  { icon: ShoppingCart, label: 'Shop Solar', id: 'shop' },
+  { icon: Package, label: 'My Orders', id: 'orders' },
+];
+
+const sellerItems = [
+  { icon: LayoutDashboard, label: 'CMS Dashboard', id: 'seller-dashboard' }
 ];
 
 interface NavigationProps {
@@ -25,6 +34,8 @@ interface NavigationProps {
 }
 
 export default function Navigation({ activeSection, onNavigate }: NavigationProps) {
+  const { user, logout } = useAuth();
+  const currentItems = user?.role === 'seller' ? sellerItems : customerItems;
   return (
     <>
       {/* Desktop sidebar */}
@@ -34,8 +45,8 @@ export default function Navigation({ activeSection, onNavigate }: NavigationProp
         <div className="mb-8">
           <SolarLogo size={32} />
         </div>
-        <div className="flex flex-col items-center gap-1 flex-1 overflow-y-auto">
-          {navItems.map((item, i) => {
+        <div className="flex flex-col items-center gap-1 flex-1 overflow-y-auto w-full">
+          {currentItems.map((item, i) => {
             const isActive = activeSection === item.id;
             const Icon = item.icon;
             return (
@@ -64,13 +75,25 @@ export default function Navigation({ activeSection, onNavigate }: NavigationProp
             );
           })}
         </div>
+        {user && (
+          <div className="flex flex-col items-center gap-2 mt-auto mb-2">
+            <NotificationBell />
+            <button 
+              onClick={logout}
+              title="Log Out"
+              className="w-10 h-10 flex items-center justify-center text-solar-muted hover:text-solar-danger transition-colors"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
+        )}
       </nav>
 
       {/* Mobile bottom bar */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 glass z-50 flex justify-around items-center py-2 px-2"
         style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
-        {navItems.slice(0, 5).map((item) => {
+        {currentItems.slice(0, 5).map((item) => {
           const isActive = activeSection === item.id;
           const Icon = item.icon;
           return (

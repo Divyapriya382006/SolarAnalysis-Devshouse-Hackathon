@@ -14,7 +14,21 @@ interface RooftopSceneProps {
   sunAngle: number;
   panelColors: string[];
   timeOfDay: number; // 0-24 hours
+  optimalTilt: number; // Degrees
 }
+
+// --- GOOGLE MAPS PHOTOREALISTIC 3D TILES INTEGRATION ---
+// /*
+//  * To enable actual interactive Google Maps 3D global tiles:
+//  * 1. Install @deck.gl/google-maps and @deck.gl/react
+//  * 2. Wrap the Canvas with GoogleMapsOverlay
+//  * 3. Pass your Maps API Key with Photorealistic 3D Tiles enabled.
+//  * 
+//  * Example:
+//  * import { GoogleMapsOverlay } from '@deck.gl/google-maps';
+//  * const overlay = new GoogleMapsOverlay({ mapId: 'YOUR_MAP_ID' });
+//  */
+// -----------------------------------------------------------
 
 /* ── Sun position from time ── */
 function calcSunPosition(hour: number): [number, number, number] {
@@ -159,7 +173,9 @@ function Trees() {
 function Ground() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-      <planeGeometry args={[40, 40]} />
+      <planeGeometry args={[100, 100]} />
+      {/* We simulate satellite imagery using a dark terrain color. In a real Maps API environment, this plane is replaced by Google 3D Tiles. */}
+      <meshStandardMaterial color="#1a201c" roughness={1} />
       <shadowMaterial transparent opacity={0.6} />
     </mesh>
   );
@@ -219,35 +235,48 @@ function Rooftop() {
   );
 }
 
-function Panel({ position, color }: { position: [number, number, number]; color: string }) {
+function Panel({ position, color, tiltDegrees }: { position: [number, number, number]; color: string; tiltDegrees: number }) {
+  // Convert optimal tilt from degrees to radians, and make it negative for the 3D scene orientation
+  const tiltRads = -(tiltDegrees * Math.PI) / 180;
+  
   return (
     <group position={position}>
-      <mesh position={[0, 0.25, 0]} rotation={[-0.3, 0, 0]} castShadow receiveShadow>
+      <mesh position={[0, 0.25, 0]} rotation={[tiltRads, 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[1.0, 0.04, 0.6]} />
         <meshStandardMaterial color="#1a1a2e" roughness={0.3} metalness={0.6} />
       </mesh>
-      <mesh position={[0, 0.275, 0]} rotation={[-0.3, 0, 0]}>
+      <mesh position={[0, 0.275, 0]} rotation={[tiltRads, 0, 0]}>
         <boxGeometry args={[0.95, 0.01, 0.55]} />
         <meshStandardMaterial color={color} roughness={0.1} metalness={0.4} emissive={color} emissiveIntensity={0.1} />
       </mesh>
       {[-0.2, 0, 0.2].map((x, i) => (
-        <mesh key={`v${i}`} position={[x, 0.28, 0]} rotation={[-0.3, 0, 0]}>
+        <mesh key={`v${i}`} position={[x, 0.28, 0]} rotation={[tiltRads, 0, 0]}>
           <boxGeometry args={[0.005, 0.015, 0.55]} />
           <meshBasicMaterial color="#ffffff" transparent opacity={0.15} />
         </mesh>
       ))}
       {[-0.15, 0.15].map((z, i) => (
-        <mesh key={`h${i}`} position={[0, 0.28, z]} rotation={[-0.3, 0, 0]}>
+        <mesh key={`h${i}`} position={[0, 0.28, z]} rotation={[tiltRads, 0, 0]}>
           <boxGeometry args={[0.95, 0.015, 0.005]} />
           <meshBasicMaterial color="#ffffff" transparent opacity={0.15} />
         </mesh>
       ))}
+      {/* Mounting Brackets */}
       <mesh position={[-0.35, 0.1, 0.15]}>
         <boxGeometry args={[0.03, 0.2, 0.03]} />
         <meshStandardMaterial color="#666" metalness={0.8} />
       </mesh>
       <mesh position={[0.35, 0.1, 0.15]}>
         <boxGeometry args={[0.03, 0.2, 0.03]} />
+        <meshStandardMaterial color="#666" metalness={0.8} />
+      </mesh>
+      {/* Back Brackets (taller for tilt) */}
+      <mesh position={[-0.35, 0.15, -0.15]}>
+        <boxGeometry args={[0.03, 0.3, 0.03]} />
+        <meshStandardMaterial color="#666" metalness={0.8} />
+      </mesh>
+      <mesh position={[0.35, 0.15, -0.15]}>
+        <boxGeometry args={[0.03, 0.3, 0.03]} />
         <meshStandardMaterial color="#666" metalness={0.8} />
       </mesh>
     </group>
@@ -281,7 +310,7 @@ function ShadowIndicator({ timeOfDay }: { timeOfDay: number }) {
   return null; // shadow calcs happen via Three.js shadow maps
 }
 
-export default function RooftopScene({ panels, sunAngle, panelColors, timeOfDay }: RooftopSceneProps) {
+export default function RooftopScene({ panels, sunAngle, panelColors, timeOfDay, optimalTilt }: RooftopSceneProps) {
   const panelPositions = useMemo(() => {
     return panels.map((p, i) => {
       const col = i % 6;
@@ -301,7 +330,7 @@ export default function RooftopScene({ panels, sunAngle, panelColors, timeOfDay 
       gl={{ alpha: true, antialias: true }}
     >
       <color attach="background" args={['#0A0F1E']} />
-      <fog attach="fog" args={['#0A0F1E', 20, 40]} />
+      <fog attach="fog" args={['#0A0F1E', 15, 50]} />
 
       <ambientLight intensity={0.15} />
       <SunOrb timeOfDay={timeOfDay} />
@@ -318,6 +347,7 @@ export default function RooftopScene({ panels, sunAngle, panelColors, timeOfDay 
           key={p.id}
           position={p.position}
           color={panelColors[p.type] || '#1a3a5a'}
+          tiltDegrees={optimalTilt}
         />
       ))}
 

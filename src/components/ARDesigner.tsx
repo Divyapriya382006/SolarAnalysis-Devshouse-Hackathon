@@ -27,6 +27,29 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
   const [viewMode, setViewMode] = useState<'3d' | 'map'>('3d');
   const [showShadowAnalysis, setShowShadowAnalysis] = useState(true);
 
+  // --- GOOGLE MAPS GEOCODING API INTEGRATION ---
+  // /* Uncomment when adding API Key:
+  // const fetchCoordinates = async (addressStr: string) => {
+  //   const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressStr)}&key=YOUR_API_KEY`);
+  //   const data = await res.json();
+  //   return data.results[0].geometry.location;
+  // }; */
+  // --- HARDCODED FALLBACK FOR GEODATA ---
+  const cityCoords: Record<string, { lat: number; lng: number }> = {
+    'bengaluru': { lat: 12.9716, lng: 77.5946 }, 'bangalore': { lat: 12.9716, lng: 77.5946 },
+    'mumbai': { lat: 19.0760, lng: 72.8777 }, 'delhi': { lat: 28.7041, lng: 77.1025 },
+    'chennai': { lat: 13.0827, lng: 80.2707 }, 'hyderabad': { lat: 17.3850, lng: 78.4867 },
+    'kolkata': { lat: 22.5726, lng: 88.3639 }, 'pune': { lat: 18.5204, lng: 73.8567 },
+  };
+  const addressLower = (address || '').toLowerCase();
+  let lat = 20.5937; // Default India
+  for (const [key, coords] of Object.entries(cityCoords)) {
+    if (addressLower.includes(key)) { lat = coords.lat; break; }
+  }
+  // Optimal tilt is roughly equal to latitude in India
+  const optimalTilt = Math.max(10, Math.min(35, lat)); 
+  const optimalAzimuth = 180; // True South in Northern Hemisphere
+
   // Shadow calculations
   const sunElevation = Math.max(Math.sin(((timeOfDay - 6) / 12) * Math.PI), 0);
   const shadowMultiplier = sunElevation > 0.05 ? (1 / Math.tan(sunElevation * (Math.PI / 2))).toFixed(1) : '∞';
@@ -182,15 +205,31 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
                   sunAngle={sunAngle}
                   panelColors={panelTypes.map(p => p.color)}
                   timeOfDay={timeOfDay}
+                  optimalTilt={optimalTilt}
                 />
               </Suspense>
             ) : (
               <GoogleMapPreview address={address} className="w-full h-full" />
             )}
 
-            {/* Overlay info */}
-            <div className="absolute top-3 left-3 glass rounded-lg px-3 py-1.5 text-[10px] text-solar-muted">
-              {viewMode === '3d' ? 'Drag to orbit • Scroll to zoom • Right-click to pan' : 'Satellite location preview'}
+            {/* Overlay AR VR info */}
+            <div className="absolute top-3 left-3 flex flex-col gap-2">
+              <div className="glass rounded-lg px-3 py-1.5 text-[10px] text-solar-muted">
+                {viewMode === '3d' ? '3D VR Mode • Drag to orbit • Scroll to zoom' : 'Satellite location preview'}
+              </div>
+              {viewMode === '3d' && (
+                <div className="glass rounded-lg px-3 py-2 text-xs border border-primary/20 bg-background/50 backdrop-blur-md">
+                  <div className="font-bold text-primary mb-1 border-b border-primary/20 pb-1">AR Calibration</div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1 text-[10px]">
+                    <span className="text-muted-foreground">Latitude:</span>
+                    <span className="font-mono text-foreground text-right">{lat.toFixed(2)}° N</span>
+                    <span className="text-muted-foreground">Opt. Tilt:</span>
+                    <span className="font-mono text-green-400 text-right">{optimalTilt.toFixed(1)}°</span>
+                    <span className="text-muted-foreground">Azimuth:</span>
+                    <span className="font-mono text-amber-400 text-right">{optimalAzimuth}° (South)</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Panel count badge */}

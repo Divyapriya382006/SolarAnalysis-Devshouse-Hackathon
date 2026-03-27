@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from './GlassCard';
-import { Sun, Cloud, CloudRain, Thermometer, X } from 'lucide-react';
+import { Sun, Cloud, CloudRain, Thermometer, X, Zap } from 'lucide-react';
+import { useLiveWeather } from '@/lib/weatherSocket';
 
 const cities = [
   { name: 'Delhi', lat: 28.6 }, { name: 'Mumbai', lat: 19.1 }, { name: 'Bengaluru', lat: 12.9 },
@@ -29,6 +30,7 @@ function getMonthData(lat: number) {
 export default function WeatherImpact() {
   const [selectedCity, setSelectedCity] = useState(cities[2]);
   const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
+  const liveWeather = useLiveWeather();
 
   const data = getMonthData(selectedCity.lat);
 
@@ -59,6 +61,46 @@ export default function WeatherImpact() {
       >
         Month-by-month solar irradiance and generation forecast for your location.
       </motion.p>
+
+      {/* Live Conditions Banner */}
+      <GlassCard className="mb-10 bg-primary/5 border-primary/20 backdrop-blur-md">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <h3 className="font-bold text-sm text-primary uppercase tracking-widest">Live Local Weather via WebSocket</h3>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-background/50 flex items-center justify-center">
+              {liveWeather.status.includes('Rain') ? <CloudRain className="text-solar-indigo" /> : liveWeather.status.includes('Cloud') ? <Cloud className="text-solar-muted" /> : <Sun className="text-solar-amber" />}
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Condition</div>
+              <div className="font-bold">{liveWeather.status}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-background/50 flex items-center justify-center"><Thermometer className="text-secondary" /></div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Temperature</div>
+              <div className="font-bold font-mono">{liveWeather.temp}°C</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-background/50 flex items-center justify-center"><Zap className="text-amber-500" /></div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Live Irradiance</div>
+              <div className="font-bold font-mono text-amber-500">{liveWeather.sunlight} W/m²</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-background/50 flex items-center justify-center"><Cloud className="text-solar-muted" /></div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Shadow Impact</div>
+              <div className="font-bold font-mono text-red-400">-{liveWeather.shadowImpact}%</div>
+            </div>
+          </div>
+        </div>
+      </GlassCard>
 
       {/* City selector */}
       <div className="flex flex-wrap gap-2 mb-10">
