@@ -4,7 +4,7 @@ import GlassCard from './GlassCard';
 import RooftopScene from './RooftopScene';
 import GoogleMapPreview from './GoogleMapPreview';
 import { useCountUp, formatIndian } from '@/hooks/useCountUp';
-import { Sun, Grid3X3, RotateCw, Lock, Eye, Map } from 'lucide-react';
+import { Sun, Grid3X3, RotateCw, Lock, Eye, Map, Clock, Building2, TreePine, AlertTriangle } from 'lucide-react';
 
 const panelTypes = [
   { name: 'Mono 400W', watt: 400, color: '#1a3a6e', efficiency: 21.5 },
@@ -23,7 +23,22 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
   const [snapGrid, setSnapGrid] = useState(true);
   const [nextId, setNextId] = useState(1);
   const [sunAngle, setSunAngle] = useState(50);
+  const [timeOfDay, setTimeOfDay] = useState(12);
   const [viewMode, setViewMode] = useState<'3d' | 'map'>('3d');
+  const [showShadowAnalysis, setShowShadowAnalysis] = useState(true);
+
+  // Shadow calculations
+  const sunElevation = Math.max(Math.sin(((timeOfDay - 6) / 12) * Math.PI), 0);
+  const shadowMultiplier = sunElevation > 0.05 ? (1 / Math.tan(sunElevation * (Math.PI / 2))).toFixed(1) : '∞';
+  const isNightTime = timeOfDay < 6 || timeOfDay > 18;
+  const shadowImpactPct = isNightTime ? 100 : Math.round(Math.max(0, (1 - sunElevation) * 60));
+  const formatTime = (h: number) => {
+    const hr = Math.floor(h);
+    const min = Math.round((h - hr) * 60);
+    const ampm = hr >= 12 ? 'PM' : 'AM';
+    const hr12 = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+    return `${hr12}:${min.toString().padStart(2, '0')} ${ampm}`;
+  };
 
   const totalKw = panels.reduce((sum, p) => sum + panelTypes[p.type].watt, 0) / 1000;
   const annualKwh = Math.round(totalKw * 1400);
@@ -141,20 +156,13 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
                 <Grid3X3 size={12} className="inline mr-1" />
                 Snap
               </button>
-              <div className="flex items-center gap-2">
-                <Sun size={12} className="text-solar-amber" />
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={sunAngle}
-                  onChange={(e) => setSunAngle(Number(e.target.value))}
-                  className="w-24 accent-solar-amber"
-                />
-                <span className="font-mono-data text-[10px] text-solar-amber">
-                  {Math.round((sunAngle / 100) * 180)}°
-                </span>
-              </div>
+              <button
+                onClick={() => setShowShadowAnalysis(!showShadowAnalysis)}
+                className={`px-3 py-1.5 text-xs rounded-lg glass transition-all ${showShadowAnalysis ? 'glow-primary text-solar-green' : 'text-solar-muted'}`}
+              >
+                <Building2 size={12} className="inline mr-1" />
+                Shadows
+              </button>
             </div>
           </div>
 
@@ -173,6 +181,7 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
                   panels={panels}
                   sunAngle={sunAngle}
                   panelColors={panelTypes.map(p => p.color)}
+                  timeOfDay={timeOfDay}
                 />
               </Suspense>
             ) : (
@@ -210,6 +219,62 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
               </div>
             )}
           </GlassCard>
+
+          {/* Time-of-day shadow scrubber */}
+          {viewMode === '3d' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass rounded-xl px-4 py-3 flex flex-col gap-2"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock size={14} className="text-solar-amber" />
+                  <span className="text-xs font-semibold text-solar-text">Shadow Timeline</span>
+                </div>
+                <span className="font-mono-data text-sm text-solar-amber">{formatTime(timeOfDay)}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={24}
+                step={0.25}
+                value={timeOfDay}
+                onChange={(e) => setTimeOfDay(Number(e.target.value))}
+                className="w-full accent-solar-amber h-2"
+              />
+              <div className="flex justify-between text-[9px] text-solar-muted font-mono-data">
+                <span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span>
+              </div>
+              {showShadowAnalysis && (
+                <div className="flex gap-3 mt-1">
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <Building2 size={10} className="text-solar-indigo" />
+                    <span className="text-solar-muted">6 buildings</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <TreePine size={10} className="text-solar-green" />
+                    <span className="text-solar-muted">5 trees</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    {isNightTime ? (
+                      <AlertTriangle size={10} className="text-solar-danger" />
+                    ) : (
+                      <Sun size={10} className="text-solar-amber" />
+                    )}
+                    <span className={isNightTime ? 'text-solar-danger' : 'text-solar-muted'}>
+                      {isNightTime ? 'No sun' : `Shadow impact: ${shadowImpactPct}%`}
+                    </span>
+                  </div>
+                  {!isNightTime && (
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-solar-muted">Shadow length: {shadowMultiplier}×</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
         </div>
 
         {/* Stats sidebar */}
@@ -248,6 +313,29 @@ export default function ARDesigner({ onCommit, address }: ARDesignerProps) {
             </div>
             <div className="font-mono-data text-sm text-solar-green mt-1">{coverage}%</div>
           </GlassCard>
+
+          {/* Shadow analysis card */}
+          {showShadowAnalysis && (
+            <GlassCard delay={0.3} glow={isNightTime ? 'none' : shadowImpactPct > 40 ? 'none' : 'primary'}>
+              <div className="text-solar-muted text-xs uppercase tracking-wider mb-1">Shadow Analysis</div>
+              <div className="flex items-center gap-2 mt-2">
+                <div className={`w-3 h-3 rounded-full ${isNightTime ? 'bg-solar-danger' : shadowImpactPct > 40 ? 'bg-solar-amber' : 'bg-solar-green'}`} />
+                <span className="font-mono-data text-sm text-solar-text">
+                  {isNightTime ? 'Night' : shadowImpactPct > 40 ? 'High shadow' : 'Low shadow'}
+                </span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-muted mt-2">
+                <motion.div
+                  className={`h-full rounded-full ${isNightTime ? 'bg-solar-danger' : shadowImpactPct > 40 ? 'bg-solar-amber' : 'bg-solar-green'}`}
+                  style={{ width: `${100 - shadowImpactPct}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+              <div className="font-mono-data text-[10px] text-solar-muted mt-1">
+                {isNightTime ? 'No generation' : `${100 - shadowImpactPct}% usable sunlight`}
+              </div>
+            </GlassCard>
+          )}
 
           {panels.length > 0 && (
             <motion.button
