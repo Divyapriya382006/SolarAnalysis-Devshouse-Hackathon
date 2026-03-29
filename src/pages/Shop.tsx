@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Star, ShieldCheck, MapPin, Zap, Wrench, CreditCard, Check, ShieldAlert } from 'lucide-react';
+import { ShoppingCart, Star, ShieldCheck, MapPin, Zap, Wrench, CreditCard, Check, ShieldAlert, RefreshCcw } from 'lucide-react';
 import GlassCard from '@/components/GlassCard';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { cn } from '@/lib/utils';
 
 const mockSellers = [
   { id: 's1', name: 'Tata Power Solar', rating: 4.9, reviews: 1240, location: 'Bengaluru, KA', distance: '12 km', pricePerWatt: 45, tier: 'Premium', verified: true },
@@ -17,6 +18,7 @@ export default function Shop() {
   const [selectedSeller, setSelectedSeller] = useState<string | null>(null);
   const [addInstall, setAddInstall] = useState(true);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [paymentTab, setPaymentTab] = useState('Card');
   const [processing, setProcessing] = useState(false);
   const navigate = useNavigate();
   const { push } = useNotifications();
@@ -179,40 +181,125 @@ export default function Shop() {
         </div>
       </div>
 
-      {/* Mock Stripe Payment Modal */}
+      {/* High-Fidelity Payment Modal (Razorpay/QR Flow) */}
       <AnimatePresence>
         {showCheckout && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCheckout(false)} className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-[#0A0F1E] border border-white/10 shadow-2xl rounded-2xl p-8 max-w-md w-full z-10 overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-primary" />
-              <h3 className="text-2xl font-bold mb-2">Secure Checkout</h3>
-              <p className="text-sm text-muted-foreground mb-8">Powered by simulated Stripe/Razorpay flow.</p>
-              
-              <div className="space-y-4 mb-8">
-                <div className="space-y-2">
-                  <label className="text-xs uppercase tracking-widest text-muted-foreground">Card Number</label>
-                  <input type="text" value="4444 4444 4444 4444" readOnly className="w-full bg-white/5 border border-white/10 rounded-lg py-3 px-4 text-muted-foreground font-mono" />
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setShowCheckout(false)} 
+              className="absolute inset-0 bg-background/90 backdrop-blur-md" 
+            />
+            
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+              className="relative bg-[#0A0F1E] border border-white/10 shadow-[0_0_100px_rgba(0,0,0,1)] rounded-3xl w-full max-w-md z-10 overflow-hidden"
+            >
+              {/* Razorpay-style branding header */}
+              <div className="bg-[#182138] p-6 flex flex-col items-center">
+                <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(0,229,160,0.5)]">
+                  <span className="text-solar-navy font-black text-xl">S</span>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-widest text-muted-foreground">Expiry Date</label>
-                    <input type="text" value="12/28" readOnly className="w-full bg-white/5 border border-white/10 rounded-lg py-3 px-4 text-muted-foreground font-mono" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-widest text-muted-foreground">CVC</label>
-                    <input type="text" value="123" readOnly className="w-full bg-white/5 border border-white/10 rounded-lg py-3 px-4 text-muted-foreground font-mono" />
-                  </div>
-                </div>
+                <h3 className="text-xl font-bold text-white uppercase tracking-[0.2em]">Solar Bharat AI</h3>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">Order #{Math.random().toString(36).substr(2, 6).toUpperCase()}</p>
               </div>
 
-              <button 
-                onClick={handlePayment}
-                disabled={processing}
-                className="w-full py-4 bg-primary text-black font-bold rounded-xl flex items-center justify-center gap-2"
-              >
-                {processing ? <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" /> : <>Pay ₹{totalCost.toLocaleString('en-IN')} securely</>}
-              </button>
+              <div className="p-8">
+                <div className="flex justify-between items-end mb-8 border-b border-white/5 pb-4">
+                  <div className="text-xs text-muted-foreground uppercase font-bold tracking-widest">Amount Payable</div>
+                  <div className="text-3xl font-mono text-primary font-bold">₹{totalCost.toLocaleString('en-IN')}</div>
+                </div>
+
+                {/* Payment Tabs */}
+                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl mb-6">
+                  {['Card', 'UPI / QR'].map(tab => (
+                    <button 
+                      key={tab} 
+                      onClick={() => setPaymentTab(tab)} 
+                      className={cn(
+                        "flex-1 py-2 text-[10px] uppercase font-black rounded-lg transition-all",
+                        paymentTab === tab ? "bg-primary text-solar-navy" : "text-muted-foreground hover:text-white"
+                      )}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="min-h-[220px]">
+                  {paymentTab === 'Card' ? (
+                    <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Card Number</label>
+                        <div className="relative">
+                           <input type="text" placeholder="4444 4444 4444 4444" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white font-mono text-sm focus:border-primary outline-none transition-all" />
+                           <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/10 px-1.5 py-0.5 rounded text-[8px] font-bold">VISA</div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Exp. Date</label>
+                          <input type="text" placeholder="MM / YY" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white font-mono text-sm focus:border-primary outline-none" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">CVV</label>
+                          <input type="password" placeholder="***" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white font-mono text-sm focus:border-primary outline-none" />
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col items-center">
+                      <div className="w-40 h-40 bg-white p-3 rounded-2xl mb-3 shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+                         {/* High-fidelity SVG QR Code mock */}
+                         <svg viewBox="0 0 100 100" className="w-full h-full text-black">
+                            <rect width="100" height="100" fill="white" />
+                            {[...Array(25)].map((_, i) => (
+                              <rect 
+                                key={i} 
+                                x={(i % 5) * 20 + 2} 
+                                y={Math.floor(i / 5) * 20 + 2} 
+                                width="16" 
+                                height="16" 
+                                fill={Math.random() > 0.5 ? "black" : "#00E59E"} 
+                              />
+                            ))}
+                            <rect x="35" y="35" width="30" height="30" fill="white" />
+                            <circle cx="50" cy="50" r="10" fill="black" />
+                         </svg>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Scan with BHIM / GPay / PhonePe</p>
+                      <div className="mt-4 w-full flex items-center gap-2">
+                        <div className="h-px bg-white/10 flex-1" />
+                        <span className="text-[9px] text-muted-foreground uppercase font-black italic">Solar Pay Enabled</span>
+                        <div className="h-px bg-white/10 flex-1" />
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={handlePayment}
+                  disabled={processing}
+                  className={cn(
+                    "w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 mt-8 transition-all active:scale-95",
+                    processing ? "bg-white/10 text-muted-foreground" : "bg-primary text-solar-navy shadow-[0_0_30px_rgba(0,229,160,0.4)] hover:shadow-primary/60"
+                  )}
+                >
+                  {processing ? (
+                    <RefreshCcw className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>CONFIRM PAYMENT & PLOT ORDER</>
+                  )}
+                </button>
+                
+                <p className="text-[9px] text-center text-muted-foreground mt-4 flex items-center justify-center gap-1 uppercase font-bold opacity-30 tracking-tighter">
+                   <ShieldCheck size={10} /> 256-Bit SSL AES Encryption · TCI Compliant
+                </p>
+              </div>
             </motion.div>
           </div>
         )}

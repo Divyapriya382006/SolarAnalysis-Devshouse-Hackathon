@@ -14,6 +14,7 @@ const defaultSystem = { panelCount: 8, totalKw: 3.2, annualKwh: 4480 };
 export default function Layout() {
   const [address, setAddress] = useState('');
   const [coordinates, setCoordinates] = useState({ lat: 12.9716, lng: 77.5946 }); // Default Bengaluru
+  const [polygon, setPolygon] = useState<Array<[number, number]>>([]); // [lat, lng] points
   const [systemData, setSystemData] = useState(defaultSystem);
   const [started, setStarted] = useState(false);
   const [showPersonalization, setShowPersonalization] = useState(false);
@@ -23,9 +24,14 @@ export default function Layout() {
   const { logout } = useAuth();
 
   const handleAddressConfirm = (addr: string, coords: { lat: number, lng: number }) => {
+    // Intelligent State Synchronization: Clear old data on new session
     setAddress(addr);
     setCoordinates(coords);
+    setPolygon([]);
+    setSystemData(defaultSystem);
     setStarted(true);
+    
+    // Smooth transition to planning suite
     setTimeout(() => navigate('/ar-designer'), 500);
   };
 
@@ -82,7 +88,7 @@ export default function Layout() {
            exit={{ opacity: 0, y: -10 }}
            transition={{ duration: 0.3 }}
         >
-          <Outlet context={{ address, coordinates, started, systemData, handleAddressConfirm, handleCommitLayout }} />
+          <Outlet context={{ address, coordinates, polygon, setPolygon, started, systemData, handleAddressConfirm, handleCommitLayout }} />
         </motion.div>
       </main>
 

@@ -18,6 +18,11 @@ import Login from "./pages/Login";
 import Shop from "./pages/Shop";
 import Orders from "./pages/Orders";
 import SellerDashboard from "./pages/SellerDashboard";
+import SellerOrders from "./modules/commerce/SellerOrders";
+import SellerCatalogue from "./modules/commerce/SellerCatalogue";
+import CustomerManagement from "./modules/commerce/CustomerManagement";
+import Transportation from "./modules/commerce/Transportation";
+import ReviewsManagement from "./modules/commerce/ReviewsManagement";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./contexts/AuthContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
@@ -28,7 +33,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
           <NotificationProvider>
           <Routes>
@@ -53,6 +58,11 @@ const App = () => (
               
               {/* Seller Routes */}
               <Route path="seller-dashboard" element={<ProtectedRoute allowedRoles={['seller']}><SellerDashboard /></ProtectedRoute>} />
+              <Route path="seller/orders" element={<ProtectedRoute allowedRoles={['seller']}><SellerOrders /></ProtectedRoute>} />
+              <Route path="seller/catalogue" element={<ProtectedRoute allowedRoles={['seller']}><SellerCatalogue /></ProtectedRoute>} />
+              <Route path="seller/customers" element={<ProtectedRoute allowedRoles={['seller']}><CustomerManagement /></ProtectedRoute>} />
+              <Route path="seller/transportation" element={<ProtectedRoute allowedRoles={['seller']}><Transportation /></ProtectedRoute>} />
+              <Route path="seller/reviews" element={<ProtectedRoute allowedRoles={['seller']}><ReviewsManagement /></ProtectedRoute>} />
               
               <Route path="*" element={<NotFound />} />
             </Route>

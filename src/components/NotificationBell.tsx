@@ -47,7 +47,7 @@ export default function NotificationBell() {
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <button
         onClick={handleOpen}
         title="Notifications"
@@ -64,53 +64,93 @@ export default function NotificationBell() {
 
       <AnimatePresence>
         {open && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, x: -10 }}
-            animate={{ opacity: 1, scale: 1, x: 0 }}
-            exit={{ opacity: 0, scale: 0.95, x: -10 }}
-            className="absolute left-12 top-0 w-80 bg-[#0A0F1E] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <span className="font-bold text-sm">Notifications</span>
-              <div className="flex items-center gap-2">
-                {myNotifs.length > 0 && (
-                  <button onClick={clear} className="text-[10px] text-muted-foreground hover:text-red-400 transition-colors">Clear all</button>
-                )}
-                <button onClick={() => setOpen(false)}><X className="w-4 h-4 text-muted-foreground" /></button>
-              </div>
-            </div>
-
-            {/* List */}
-            <div className="max-h-96 overflow-y-auto divide-y divide-white/5">
-              {myNotifs.length === 0 ? (
-                <div className="py-12 text-center text-muted-foreground text-sm">
-                  <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  No notifications yet
+          <>
+            {/* Invisible backdrop to close on outside click */}
+            <div
+              className="fixed inset-0 z-[90]"
+              onClick={() => setOpen(false)}
+            />
+            {/* Panel — slides in from left, positioned right of the sidebar */}
+            <motion.div
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+              className="fixed top-0 left-16 h-screen w-[360px] z-[100] bg-[#080d1a] border-r border-white/8 shadow-[4px_0_40px_rgba(0,0,0,0.6)] flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-5 border-b border-white/5 bg-white/[0.02]">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-primary" />
+                    Notifications
+                  </h3>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">Real-time alerts</p>
                 </div>
-              ) : (
-                myNotifs.map((n: Notification) => {
-                  const cfg = typeConfig[n.type];
-                  const Icon = cfg.icon;
-                  return (
-                    <div key={n.id} className={cn('flex gap-3 px-4 py-3 hover:bg-white/5 transition-colors', !n.read ? 'bg-white/[0.03]' : '')}>
-                      <div className={cn('w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center mt-0.5', cfg.bg)}>
-                        <Icon className={cn('w-4 h-4', cfg.color)} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold leading-tight flex items-center gap-1">
-                          {n.title}
-                          {!n.read && <span className="w-1.5 h-1.5 bg-primary rounded-full inline-block flex-shrink-0" />}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.message}</div>
-                        <div className="text-[10px] text-muted-foreground/60 mt-1">{timeAgo(n.timestamp)}</div>
-                      </div>
+                <div className="flex items-center gap-3">
+                  {myNotifs.length > 0 && (
+                    <button
+                      onClick={clear}
+                      className="text-[10px] font-bold text-muted-foreground hover:text-red-400 transition-colors uppercase tracking-tighter"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center hover:bg-white/5 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Notification List */}
+              <div className="flex-1 overflow-y-auto divide-y divide-white/5 px-2 py-2">
+                {myNotifs.length === 0 ? (
+                  <div className="py-20 text-center">
+                    <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-3 border border-white/5">
+                      <Bell className="w-7 h-7 text-muted-foreground opacity-20" />
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </motion.div>
+                    <p className="text-sm font-bold text-muted-foreground">No notifications</p>
+                    <p className="text-xs text-muted-foreground/50 mt-1">We'll alert you when something happens.</p>
+                  </div>
+                ) : (
+                  myNotifs.map((n: Notification) => {
+                    const cfg = typeConfig[n.type];
+                    const Icon = cfg.icon;
+                    return (
+                      <div
+                        key={n.id}
+                        className={cn(
+                          'flex gap-3 px-3 py-4 hover:bg-white/[0.03] transition-all relative rounded-xl mx-1 my-1',
+                          !n.read ? 'bg-primary/[0.03] border-l-2 border-primary' : ''
+                        )}
+                      >
+                        <div className={cn('w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center', cfg.bg)}>
+                          <Icon className={cn('w-4 h-4', cfg.color)} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-xs font-bold text-white truncate">{n.title}</span>
+                            <span className="text-[9px] font-mono text-muted-foreground/50 ml-2 shrink-0">{timeAgo(n.timestamp)}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">{n.message}</p>
+                        </div>
+                        {!n.read && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_6px_rgba(0,229,160,0.5)]" />
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="px-5 py-3 bg-white/[0.02] border-t border-white/5">
+                <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-medium opacity-40 text-center">Solar Bharat AI · Alert Engine</p>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>

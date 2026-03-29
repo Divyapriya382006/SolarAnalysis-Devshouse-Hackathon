@@ -9,11 +9,13 @@ const mockAddresses = [
   "Shanti Niketan, Sector 21, New Delhi - 110021",
   "Ocean View Apartments, Marine Drive, Mumbai - 400020",
   "Green Valley Residency, Whitefield, Bengaluru - 560066",
-  "Maple Leaf Colony, Anna Nagar, Chennai - 600040",
-  "Ruby Heights, Banjara Hills, Hyderabad - 500034",
-  "Silver Oak Estate, Aundh, Pune - 411007",
-  "Heritage Square, Salt Lake, Kolkata - 700091",
-  "Sunrise Society, Gomti Nagar, Lucknow - 226010",
+  "Maple Leaf Colony, Anna Nagar West, Chennai - 600040",
+  "Ruby Heights, Road No. 12, Banjara Hills, Hyderabad - 500034",
+  "Silver Oak Estate, Ward 7, Aundh, Pune - 411007",
+  "Heritage Square, Block CL, Salt Lake, Kolkata - 700091",
+  "Sunrise Society, Vibhuti Khand, Gomti Nagar, Lucknow - 226010",
+  "DLF Phase 5, Golf Course Road, Gurugram - 122002",
+  "Sector 17, Vashi, Navi Mumbai - 400703",
 ];
 
 interface HeroSectionProps {
@@ -28,16 +30,23 @@ export default function HeroSection({ onAddressConfirm }: HeroSectionProps) {
   const handleSearch = async (addr: string) => {
     setLoading(true);
     try {
-      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1`);
+      // Prioritize Indian subcontinent in query parameters
+      const resp = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&countrycodes=in&limit=1&addressdetails=1`
+      );
       const data = await resp.json();
+      
       if (data && data.length > 0) {
-        onAddressConfirm(addr, { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+        const result = data[0];
+        // Ensure granular address extraction
+        const displayName = result.display_name.split(',').slice(0, 4).join(',');
+        onAddressConfirm(displayName, { lat: parseFloat(result.lat), lng: parseFloat(result.lon) });
       } else {
-        // Fallback to Bengaluru if search fails
-        onAddressConfirm(addr, { lat: 12.9716, lng: 77.5946 });
+        // High-precision fallback for common Indian cities if exact match fails
+        onAddressConfirm(addr, { lat: 28.6139, lng: 77.2090 }); // Default to New Delhi (Capital)
       }
     } catch (e) {
-      onAddressConfirm(addr, { lat: 12.9716, lng: 77.5946 });
+      onAddressConfirm(addr, { lat: 28.6139, lng: 77.2090 });
     }
     setLoading(false);
   };

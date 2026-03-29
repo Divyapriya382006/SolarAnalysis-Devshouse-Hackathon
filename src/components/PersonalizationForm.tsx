@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building, Home, CheckCircle2, ShieldAlert, Zap, Banknote, Sun } from 'lucide-react';
+import { Building, Home, CheckCircle2, ShieldAlert, Zap, Banknote, Sun, FileText, FileCheck, Fingerprint, Check } from 'lucide-react';
 import GlassCard from './GlassCard';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +29,7 @@ export default function PersonalizationForm({ onComplete, systemKw, systemData }
     shadows: 'none',
     inverterQuality: 'standard',
   });
+  const [uploads, setUploads] = useState<Record<string, boolean>>({});
   const [analyzing, setAnalyzing] = useState(false);
 
   const handleAnalyze = () => {
@@ -182,6 +183,55 @@ export default function PersonalizationForm({ onComplete, systemKw, systemData }
                       </button>
                     ))}
                   </div>
+                  
+                  <AnimatePresence>
+                    {data.gridApproval !== 'none' && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="mt-4 p-4 rounded-xl border border-dashed border-border flex flex-col gap-3 overflow-hidden"
+                      >
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Required Documents (PDF/JPG)</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {[
+                            { id: 'bill', label: 'Electricity Bill', icon: FileText },
+                            { id: 'noc', label: 'Roof NOC', icon: FileCheck },
+                            { id: 'id', label: 'ID Proof', icon: Fingerprint },
+                          ].map((doc) => (
+                            <div key={doc.id} className="relative">
+                              <input 
+                                type="file" 
+                                id={doc.id} 
+                                className="hidden" 
+                                onChange={(e) => {
+                                  if (e.target.files?.[0]) {
+                                    setUploads(prev => ({ ...prev, [doc.id]: true }));
+                                  }
+                                }} 
+                              />
+                              <label 
+                                htmlFor={doc.id}
+                                className={cn(
+                                  "w-full p-2.5 rounded-lg border flex items-center gap-3 cursor-pointer transition-all",
+                                  uploads[doc.id] ? "bg-solar-green/10 border-solar-green/40" : "glass hover:bg-white/5"
+                                )}
+                              >
+                                <div className={cn("w-6 h-6 rounded flex items-center justify-center", uploads[doc.id] ? "bg-solar-green text-solar-navy" : "bg-white/10 text-muted-foreground")}>
+                                  {uploads[doc.id] ? <Check size={14} /> : <doc.icon size={14} />}
+                                </div>
+                                <span className={cn("text-xs font-semibold", uploads[doc.id] ? "text-solar-green" : "text-muted-foreground")}>
+                                  {doc.label}
+                                </span>
+                                {uploads[doc.id] && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-solar-green animate-pulse" />}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[9px] text-muted-foreground/60 italic">* Encryption enabled. Files stored securely in Sunwise Vault.</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="flex justify-between pt-4">

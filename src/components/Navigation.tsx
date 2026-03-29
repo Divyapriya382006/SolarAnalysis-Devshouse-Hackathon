@@ -3,7 +3,8 @@ import SolarLogo from './SolarLogo';
 import {
   Home, Box, BarChart3, Calculator, Clock, Map,
   Activity, MessageCircle, Leaf, Cloud, FileText,
-  ShoppingCart, Package, LayoutDashboard, LogOut
+  ShoppingCart, Package, LayoutDashboard, LogOut,
+  Users, Truck, Star
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
@@ -25,7 +26,12 @@ const customerItems = [
 ];
 
 const sellerItems = [
-  { icon: LayoutDashboard, label: 'CMS Dashboard', id: 'seller-dashboard' }
+  { icon: LayoutDashboard, label: 'Dashboard', id: 'seller-dashboard' },
+  { icon: Package, label: 'Orders', id: 'seller/orders' },
+  { icon: ShoppingCart, label: 'Catalogue', id: 'seller/catalogue' },
+  { icon: Users, label: 'Customers', id: 'seller/customers' },
+  { icon: Truck, label: 'Transport', id: 'seller/transportation' },
+  { icon: Star, label: 'Reviews', id: 'seller/reviews' },
 ];
 
 interface NavigationProps {

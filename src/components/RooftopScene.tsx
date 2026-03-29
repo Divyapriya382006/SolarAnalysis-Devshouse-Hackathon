@@ -1,365 +1,617 @@
-import { useRef, useMemo } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Grid } from '@react-three/drei';
+/**
+ * RooftopScene.tsx — Geo-Spatial Digital Twin
+ * 
+ * Architecture:
+ * - ESRI World Imagery tiles (free, no key, CORS-open)
+ * - EPSG:4326 → local flat-meter grid projection
+ * - Origin = user's searched address (lat/lng)
+ * - Solar panels spatially anchored to real-world coordinates
+ * - Constrained camera: orbit/pan/zoom locked to ~150m radius
+ */
+
+import { useRef, useMemo, useEffect, useState } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Grid, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SolarPanel3D {
   id: number;
   type: number;
   position: [number, number, number];
+  inShadow?: boolean;
 }
 
 interface RooftopSceneProps {
   panels: SolarPanel3D[];
   sunAngle: number;
   panelColors: string[];
-  timeOfDay: number; // 0-24 hours
-  optimalTilt: number; // Degrees
+  timeOfDay: number;
+  optimalTilt: number;
+  polygon: Array<[number, number]>;  // [lat, lng]
+  center: { lat: number; lng: number };
+  isCropping?: boolean;
+  isScanning?: boolean;
+  onPolygonUpdate?: (poly: Array<[number, number]>) => void;
+  onMetricsUpdate?: (metrics: { totalShadowImpact: number; avgEfficiency: number }) => void;
 }
 
-// --- GOOGLE MAPS PHOTOREALISTIC 3D TILES INTEGRATION ---
-// /*
-//  * To enable actual interactive Google Maps 3D global tiles:
-//  * 1. Install @deck.gl/google-maps and @deck.gl/react
-//  * 2. Wrap the Canvas with GoogleMapsOverlay
-//  * 3. Pass your Maps API Key with Photorealistic 3D Tiles enabled.
-//  * 
-//  * Example:
-//  * import { GoogleMapsOverlay } from '@deck.gl/google-maps';
-//  * const overlay = new GoogleMapsOverlay({ mapId: 'YOUR_MAP_ID' });
-//  */
-// -----------------------------------------------------------
+// ─── GIS Math ────────────────────────────────────────────────────────────────
 
-/* ── Sun position from time ── */
-function calcSunPosition(hour: number): [number, number, number] {
-  const noon = 12;
-  const t = ((hour - 6) / 12) * Math.PI; // 6am=0, 12pm=PI/2, 6pm=PI
-  const x = Math.cos(t) * 12;
-  const y = Math.max(Math.sin(t) * 10, 0.2);
-  const z = -4 + Math.sin(t) * 2;
-  return [x, y, z];
+/**
+ * Slippy Map tile formula (Web Mercator / EPSG:3857)
+ * Returns fractional tile position + integer tile coords
+ */
+function latLngToTile(lat: number, lng: number, zoom: number) {
+  const n = Math.pow(2, zoom);
+  const tileX_f = ((lng + 180) / 360) * n;
+  const latRad = (lat * Math.PI) / 180;
+  const tileY_f = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+  return {
+    fx: tileX_f,
+    fy: tileY_f,
+    tileX: Math.floor(tileX_f),
+    tileY: Math.floor(tileY_f),
+  };
+}
+
+/**
+ * Accurate meters per tile at a given latitude and zoom level.
+ * Formula: Earth_Circumference × cos(lat) / 2^zoom
+ */
+function metersPerTileAt(lat: number, zoom: number): number {
+  return (40075016.686 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom);
+}
+
+/**
+ * Converts lat/lng to local scene coordinates (meters from origin).
+ * origin = { lat, lng } of the scene center.
+ * Returns [x, z] — y-up convention in Three.js means lat→Z, lng→X
+ */
+function latlngToLocal(lat: number, lng: number, originLat: number, originLng: number): [number, number] {
+  const cosLat = Math.cos((originLat * Math.PI) / 180);
+  const x = (lng - originLng) * 111320 * cosLat;
+  const z = -(lat - originLat) * 111320; // Negative: north is -Z in Three.js default
+  return [x, z];
+}
+
+// ─── Sun Simulation ──────────────────────────────────────────────────────────
+
+function calcSunPosition(hour: number): THREE.Vector3 {
+  const t = ((hour - 6) / 12) * Math.PI;
+  return new THREE.Vector3(
+    Math.cos(t) * 80,
+    Math.max(Math.sin(t) * 60, 0.5),
+    -30 + Math.sin(t) * 20
+  );
 }
 
 function SunOrb({ timeOfDay }: { timeOfDay: number }) {
-  const ref = useRef<THREE.Mesh>(null);
-  const [x, y, z] = calcSunPosition(timeOfDay);
-  const isNight = y < 0.5;
-
-  useFrame(() => {
-    if (ref.current) {
-      ref.current.position.set(x, y, z);
-    }
-  });
+  const sunPos = calcSunPosition(timeOfDay);
+  const isNight = sunPos.y < 2;
 
   return (
     <group>
-      <mesh ref={ref} position={[x, y, z]}>
-        <sphereGeometry args={[0.35, 16, 16]} />
+      <mesh position={sunPos}>
+        <sphereGeometry args={[1.5, 32, 32]} />
         <meshStandardMaterial
-          color="#F59E0B"
-          emissive="#F59E0B"
-          emissiveIntensity={isNight ? 0.3 : 2}
+          color="#FBBF24"
+          emissive="#FBBF24"
+          emissiveIntensity={isNight ? 0.2 : 6}
         />
       </mesh>
       <directionalLight
-        position={[x, y, z]}
-        intensity={isNight ? 0.1 : 1.5}
-        color="#F59E0B"
+        position={sunPos}
+        intensity={isNight ? 0.1 : 3.5}
+        color="#FDE68A"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-left={-15}
-        shadow-camera-right={15}
-        shadow-camera-top={15}
-        shadow-camera-bottom={-15}
-        shadow-camera-near={0.5}
-        shadow-camera-far={50}
-        shadow-bias={-0.001}
+        shadow-camera-left={-80}
+        shadow-camera-right={80}
+        shadow-camera-top={80}
+        shadow-camera-bottom={-80}
+        shadow-camera-near={1}
+        shadow-camera-far={300}
+        shadow-bias={-0.0002}
       />
     </group>
   );
 }
 
-/* ── Nearby buildings that cast shadows ── */
-function NearbyBuildings() {
-  const buildings = useMemo(() => [
-    { pos: [-8, 3, -3] as const, size: [3, 6, 4] as const, color: '#1a1a2a' },
-    { pos: [-7, 4, 3] as const, size: [2.5, 8, 3] as const, color: '#1e1e30' },
-    { pos: [8, 2.5, -2] as const, size: [2, 5, 5] as const, color: '#1c1c28' },
-    { pos: [9, 3.5, 4] as const, size: [3, 7, 2.5] as const, color: '#1a1a2e' },
-    { pos: [0, 2, -8] as const, size: [4, 4, 2] as const, color: '#1e1e2c' },
-    { pos: [5, 5, -7] as const, size: [2, 10, 3] as const, color: '#161626' },
-  ], []);
+// ─── Satellite Tile Layer ─────────────────────────────────────────────────────
+
+/**
+ * Renders a single ESRI World Imagery tile.
+ * ESRI URL format: /tile/{z}/{y}/{x}  (note y before x — different from OSM!)
+ */
+function EsriTile({
+  tileX, tileY, zoom, sizeM, localX, localZ,
+}: {
+  tileX: number; tileY: number; zoom: number;
+  sizeM: number; localX: number; localZ: number;
+}) {
+  // Validate tile coordinates
+  const maxTile = Math.pow(2, zoom);
+  const validX = ((tileX % maxTile) + maxTile) % maxTile;
+  const validY = Math.max(0, Math.min(maxTile - 1, tileY));
+
+  // ESRI World Imagery — Free, no API key, open CORS
+  const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${validY}/${validX}`;
+
+  const texture = useMemo(() => {
+    const loader = new THREE.TextureLoader();
+    loader.crossOrigin = 'anonymous';
+    const tex = loader.load(url, undefined, undefined, () => {
+      // On error: texture stays grey (fallback material handles this)
+    });
+    tex.anisotropy = 16;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    return tex;
+  }, [url]);
 
   return (
-    <group>
-      {buildings.map((b, i) => (
-        <group key={i}>
-          <mesh
-            position={[b.pos[0], b.pos[1], b.pos[2]]}
-            castShadow
-          >
-            <boxGeometry args={[b.size[0], b.size[1], b.size[2]]} />
-            <meshStandardMaterial
-              color={b.color}
-              roughness={0.9}
-              metalness={0.1}
-              transparent
-              opacity={0.85}
-            />
-          </mesh>
-          {/* Window lights */}
-          {Array.from({ length: Math.floor(b.size[1] / 1.5) }).map((_, row) =>
-            Array.from({ length: Math.floor(b.size[0] / 1.2) }).map((_, col) => (
-              <mesh
-                key={`w${row}-${col}`}
-                position={[
-                  b.pos[0] - b.size[0] / 2 + 0.6 + col * 1.2,
-                  b.pos[1] - b.size[1] / 2 + 1 + row * 1.5,
-                  b.pos[2] + b.size[2] / 2 + 0.01,
-                ]}
-              >
-                <planeGeometry args={[0.4, 0.6]} />
-                <meshStandardMaterial
-                  color="#334155"
-                  emissive="#6366F1"
-                  emissiveIntensity={0.15}
-                />
-              </mesh>
-            ))
-          )}
-        </group>
-      ))}
-    </group>
-  );
-}
-
-/* ── Trees that cast shadows ── */
-function Trees() {
-  const trees = useMemo(() => [
-    { pos: [-6, 0, 6] as const, height: 4, canopyRadius: 1.5 },
-    { pos: [7, 0, 6] as const, height: 5, canopyRadius: 2 },
-    { pos: [-3, 0, -7] as const, height: 3.5, canopyRadius: 1.3 },
-    { pos: [10, 0, 0] as const, height: 6, canopyRadius: 2.2 },
-    { pos: [-10, 0, 1] as const, height: 4.5, canopyRadius: 1.8 },
-  ], []);
-
-  return (
-    <group>
-      {trees.map((t, i) => (
-        <group key={i} position={[t.pos[0], t.pos[1], t.pos[2]]}>
-          {/* Trunk */}
-          <mesh position={[0, t.height / 2, 0]} castShadow>
-            <cylinderGeometry args={[0.12, 0.18, t.height, 8]} />
-            <meshStandardMaterial color="#3d2914" roughness={0.95} />
-          </mesh>
-          {/* Canopy */}
-          <mesh position={[0, t.height + t.canopyRadius * 0.5, 0]} castShadow>
-            <sphereGeometry args={[t.canopyRadius, 12, 12]} />
-            <meshStandardMaterial
-              color="#1a4a2a"
-              roughness={0.9}
-              transparent
-              opacity={0.9}
-            />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-/* ── Shadow receiver plane (ground) ── */
-function Ground() {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-      <planeGeometry args={[100, 100]} />
-      {/* We simulate satellite imagery using a dark terrain color. In a real Maps API environment, this plane is replaced by Google 3D Tiles. */}
-      <meshStandardMaterial color="#1a201c" roughness={1} />
-      <shadowMaterial transparent opacity={0.6} />
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[localX, -0.02, localZ]}
+      receiveShadow
+      name="satellite_tile"
+    >
+      <planeGeometry args={[sizeM, sizeM]} />
+      <meshStandardMaterial
+        map={texture}
+        roughness={1}
+        metalness={0}
+        color="#ffffff"
+      />
     </mesh>
   );
 }
 
-function Rooftop() {
+/**
+ * 5×5 tile grid anchored to the user's building coordinate.
+ * Covers approximately 250m × 250m at zoom 19.
+ */
+function SatelliteGround({
+  centerLat, centerLng, onClick,
+}: {
+  centerLat: number; centerLng: number; onClick?: (e: any) => void;
+}) {
+  const ZOOM = 19;
+  const GRID = 2; // radius: renders (2*2+1)^2 = 25 tiles = 5×5
+
+  const { tileData, sizeM } = useMemo(() => {
+    if (!isFinite(centerLat) || !isFinite(centerLng)) return { tileData: [], sizeM: 0 };
+
+    const { fx, fy, tileX: cTX, tileY: cTY } = latLngToTile(centerLat, centerLng, ZOOM);
+    const sizeM = metersPerTileAt(centerLat, ZOOM);
+
+    // Sub-pixel offset: how far into the center tile are we?
+    const subX = (fx - cTX - 0.5) * sizeM; // meters from tile center
+    const subZ = (fy - cTY - 0.5) * sizeM;
+
+    const tileData = [];
+    for (let dx = -GRID; dx <= GRID; dx++) {
+      for (let dy = -GRID; dy <= GRID; dy++) {
+        tileData.push({
+          tileX: cTX + dx,
+          tileY: cTY + dy,
+          localX: dx * sizeM - subX,
+          localZ: dy * sizeM - subZ,
+        });
+      }
+    }
+    return { tileData, sizeM };
+  }, [centerLat, centerLng]);
+
+  if (!tileData.length || !sizeM) return null;
+
   return (
-    <group>
-      {/* Main flat roof */}
-      <mesh position={[0, 0, 0]} receiveShadow castShadow>
-        <boxGeometry args={[10, 0.3, 8]} />
-        <meshStandardMaterial color="#2a2a3e" roughness={0.9} />
+    <group onClick={onClick}>
+      {/* Fallback dark plane so scene is never "blank" */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]}>
+        <planeGeometry args={[sizeM * (2 * GRID + 1), sizeM * (2 * GRID + 1)]} />
+        <meshStandardMaterial color="#0a1628" roughness={1} />
       </mesh>
 
-      {/* Parapet walls */}
-      <mesh position={[0, 0.35, 4]} castShadow><boxGeometry args={[10, 0.4, 0.15]} /><meshStandardMaterial color="#3a3a4e" roughness={0.8} /></mesh>
-      <mesh position={[0, 0.35, -4]} castShadow><boxGeometry args={[10, 0.4, 0.15]} /><meshStandardMaterial color="#3a3a4e" roughness={0.8} /></mesh>
-      <mesh position={[-5, 0.35, 0]} castShadow><boxGeometry args={[0.15, 0.4, 8]} /><meshStandardMaterial color="#3a3a4e" roughness={0.8} /></mesh>
-      <mesh position={[5, 0.35, 0]} castShadow><boxGeometry args={[0.15, 0.4, 8]} /><meshStandardMaterial color="#3a3a4e" roughness={0.8} /></mesh>
+      {/* Satellite tiles */}
+      {tileData.map((t, i) => (
+        <EsriTile
+          key={i}
+          tileX={t.tileX}
+          tileY={t.tileY}
+          zoom={ZOOM}
+          sizeM={sizeM}
+          localX={t.localX}
+          localZ={t.localZ}
+        />
+      ))}
+    </group>
+  );
+}
 
-      {/* Water tank */}
-      <mesh position={[3.5, 0.8, -2.8]} castShadow>
-        <cylinderGeometry args={[0.6, 0.6, 1.2, 16]} />
-        <meshStandardMaterial color="#4a6580" roughness={0.6} metalness={0.3} />
-      </mesh>
-      <mesh position={[3.5, 0.25, -2.8]}>
-        <boxGeometry args={[1.4, 0.2, 1.4]} />
-        <meshStandardMaterial color="#555" />
-      </mesh>
+// ─── Rooftop Polygon ─────────────────────────────────────────────────────────
 
-      {/* Staircase head */}
-      <mesh position={[-3.5, 0.9, 2.5]} castShadow>
-        <boxGeometry args={[2, 1.5, 1.8]} />
-        <meshStandardMaterial color="#3d3d50" roughness={0.8} />
-      </mesh>
-      <mesh position={[-3.5, 0.6, 3.41]}>
-        <boxGeometry args={[0.7, 1.1, 0.02]} />
-        <meshStandardMaterial color="#555" />
-      </mesh>
+function RooftopPolygon({ points }: { points: Array<{ x: number; z: number }> }) {
+  const shape = useMemo(() => {
+    if (points.length < 3) return null;
+    const s = new THREE.Shape();
+    // CRITICAL FIX: group rotation [-PI/2,0,0] maps shapeY → -WorldZ.
+    // Must negate z: shapeY = -p.z → WorldZ = -(-p.z) = p.z (matches panels).
+    s.moveTo(points[0].x, -points[0].z);
+    for (let i = 1; i < points.length; i++) s.lineTo(points[i].x, -points[i].z);
+    s.closePath();
+    return s;
+  }, [points]);
 
-      {/* Antenna */}
-      <mesh position={[4, 1.5, 3]} castShadow>
-        <cylinderGeometry args={[0.02, 0.02, 2.5, 6]} />
-        <meshStandardMaterial color="#888" metalness={0.8} />
-      </mesh>
-      <mesh position={[4, 2.5, 3]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.015, 0.015, 0.6, 4]} />
-        <meshStandardMaterial color="#888" metalness={0.8} />
-      </mesh>
+  if (!shape) return null;
 
-      {/* Shadow receiving surface on roof */}
-      <mesh position={[0, 0.16, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[10, 8]} />
-        <shadowMaterial transparent opacity={0.7} />
+  return (
+    <group rotation={[-Math.PI / 2, 0, 0]}>
+      {/* Surface highlight */}
+      <mesh name="rooftop" receiveShadow>
+        <shapeGeometry args={[shape]} />
+        <meshStandardMaterial
+          color="#00E5A0"
+          transparent
+          opacity={0.18}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* Extruded border */}
+      <mesh>
+        <extrudeGeometry args={[shape, { depth: 0.12, bevelEnabled: false }]} />
+        <meshStandardMaterial
+          color="#00E5A0"
+          transparent
+          opacity={0.35}
+          roughness={0.1}
+          metalness={0.7}
+          wireframe={false}
+        />
       </mesh>
     </group>
   );
 }
 
-function Panel({ position, color, tiltDegrees }: { position: [number, number, number]; color: string; tiltDegrees: number }) {
-  // Convert optimal tilt from degrees to radians, and make it negative for the 3D scene orientation
-  const tiltRads = -(tiltDegrees * Math.PI) / 180;
-  
+// ─── Solar Panel ─────────────────────────────────────────────────────────────
+
+function SolarPanel({
+  position, color, tiltDeg, inShadow,
+}: {
+  position: [number, number, number]; color: string; tiltDeg: number; inShadow?: boolean;
+}) {
+  const tiltRad = (tiltDeg * Math.PI) / 180; // positive = north edge up (south-facing)
+  const W = 5.0;  // width east-west (5× for visibility)
+  const L = 8.5;  // length north-south (5× for visibility)
+  const T = 0.18; // thickness (scaled)
+
+  // Place panel so south edge sits at y=0.05 (just above roof)
+  // Panel center Y = 0.05 + (L/2)*sin(tilt)
+  const cY = 0.05 + (L / 2) * Math.sin(tiltRad);
+  const legH = (L / 2) * Math.sin(tiltRad) + 0.05;
+  const legZ = (L / 2) * Math.cos(tiltRad);
+
   return (
     <group position={position}>
-      <mesh position={[0, 0.25, 0]} rotation={[tiltRads, 0, 0]} castShadow receiveShadow>
-        <boxGeometry args={[1.0, 0.04, 0.6]} />
-        <meshStandardMaterial color="#1a1a2e" roughness={0.3} metalness={0.6} />
+      {/* Frame — tilted: rotation[-tiltRad] around X = south edge down, north up */}
+      <mesh position={[0, cY, 0]} rotation={[-tiltRad, 0, 0]} castShadow receiveShadow>
+        <boxGeometry args={[W, T, L]} />
+        <meshStandardMaterial color="#111827" roughness={0.3} metalness={0.9} />
       </mesh>
-      <mesh position={[0, 0.275, 0]} rotation={[tiltRads, 0, 0]}>
-        <boxGeometry args={[0.95, 0.01, 0.55]} />
-        <meshStandardMaterial color={color} roughness={0.1} metalness={0.4} emissive={color} emissiveIntensity={0.1} />
+      {/* Cell glass surface */}
+      <mesh position={[0, cY + T, 0]} rotation={[-tiltRad, 0, 0]}>
+        <boxGeometry args={[W * 0.93, T * 0.4, L * 0.95]} />
+        <meshStandardMaterial
+          color={inShadow ? '#1e1b4b' : color}
+          roughness={0.04}
+          metalness={0.5}
+          emissive={inShadow ? '#000' : color}
+          emissiveIntensity={inShadow ? 0 : 0.28}
+        />
       </mesh>
-      {[-0.2, 0, 0.2].map((x, i) => (
-        <mesh key={`v${i}`} position={[x, 0.28, 0]} rotation={[tiltRads, 0, 0]}>
-          <boxGeometry args={[0.005, 0.015, 0.55]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.15} />
-        </mesh>
-      ))}
-      {[-0.15, 0.15].map((z, i) => (
-        <mesh key={`h${i}`} position={[0, 0.28, z]} rotation={[tiltRads, 0, 0]}>
-          <boxGeometry args={[0.95, 0.015, 0.005]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.15} />
-        </mesh>
-      ))}
-      {/* Mounting Brackets */}
-      <mesh position={[-0.35, 0.1, 0.15]}>
-        <boxGeometry args={[0.03, 0.2, 0.03]} />
-        <meshStandardMaterial color="#666" metalness={0.8} />
-      </mesh>
-      <mesh position={[0.35, 0.1, 0.15]}>
-        <boxGeometry args={[0.03, 0.2, 0.03]} />
-        <meshStandardMaterial color="#666" metalness={0.8} />
-      </mesh>
-      {/* Back Brackets (taller for tilt) */}
-      <mesh position={[-0.35, 0.15, -0.15]}>
-        <boxGeometry args={[0.03, 0.3, 0.03]} />
-        <meshStandardMaterial color="#666" metalness={0.8} />
-      </mesh>
-      <mesh position={[0.35, 0.15, -0.15]}>
-        <boxGeometry args={[0.03, 0.3, 0.03]} />
-        <meshStandardMaterial color="#666" metalness={0.8} />
+      {/* South mounting leg */}
+      <mesh position={[0, legH / 2, legZ]}>
+        <boxGeometry args={[W * 0.45, legH, 0.05]} />
+        <meshStandardMaterial color="#374151" roughness={0.6} metalness={0.7} />
       </mesh>
     </group>
   );
 }
 
-function GridFloor() {
+// ─── Shadow Analyzer ─────────────────────────────────────────────────────────
+
+function ShadowAnalyzer({
+  panels, timeOfDay, onUpdate,
+}: {
+  panels: SolarPanel3D[]; timeOfDay: number; onUpdate: (d: SolarPanel3D[]) => void;
+}) {
+  const { scene } = useThree();
+  const raycaster = useRef(new THREE.Raycaster());
+  const frameCount = useRef(0);
+
+  useFrame(() => {
+    // Only run every 30 frames to avoid perf issues
+    frameCount.current++;
+    if (frameCount.current % 30 !== 0) return;
+
+    const sunPos = calcSunPosition(timeOfDay);
+    const sunVec = sunPos.clone().normalize();
+    const isNight = sunPos.y < 2;
+
+    const updated = panels.map((p) => {
+      if (isNight) return { ...p, inShadow: true };
+      const worldPos = new THREE.Vector3(p.position[0], p.position[1] + 0.1, p.position[2]);
+      const dir = sunPos.clone().sub(worldPos).normalize();
+      raycaster.current.set(worldPos, dir);
+      const hits = raycaster.current.intersectObjects(scene.children, true);
+      const sunDist = worldPos.distanceTo(sunPos);
+      const blocked = hits.some(
+        (h) => h.distance > 0.2 && h.distance < sunDist && !h.object.name.startsWith('satellite')
+      );
+      return { ...p, inShadow: blocked };
+    });
+
+    onUpdate(updated);
+  });
+
+  return null;
+}
+
+// ─── Crop Overlay ─────────────────────────────────────────────────────────────
+
+function CropOverlay({
+  points, centroidLat, centroidLng
+}: {
+  points: Array<{ x: number; z: number }>;
+  centroidLat: number;
+  centroidLng: number;
+}) {
+  if (points.length === 0) return null;
+
+  const linePoints = points.map((p) => new THREE.Vector3(p.x, 0.15, p.z));
+  if (points.length > 1) linePoints.push(linePoints[0]); // close the loop visually
+
   return (
-    <Grid
-      args={[20, 20]}
-      position={[0, 0.16, 0]}
-      cellSize={0.5}
-      cellThickness={0.5}
-      cellColor="#00E5A0"
-      sectionSize={2}
-      sectionThickness={1}
-      sectionColor="#00E5A0"
-      fadeDistance={15}
-      fadeStrength={1}
-      infiniteGrid={false}
-    />
+    <group>
+      {/* Corner markers */}
+      {points.map((p, i) => (
+        <mesh key={i} position={[p.x, 0.18, p.z]}>
+          <sphereGeometry args={[0.35, 16, 16]} />
+          <meshBasicMaterial color="#00E5A0" />
+        </mesh>
+      ))}
+      {/* Line */}
+      {points.length > 1 && (
+        <Line points={linePoints} color="#00E5A0" lineWidth={2.5} />
+      )}
+    </group>
   );
 }
 
-/* ── Shadow analysis info overlay ── */
-function ShadowIndicator({ timeOfDay }: { timeOfDay: number }) {
-  const sunPos = calcSunPosition(timeOfDay);
-  const isNight = sunPos[1] < 0.5;
-  const shadowLength = isNight ? 0 : (1 / Math.max(Math.tan((sunPos[1] / 10) * (Math.PI / 2)), 0.1)).toFixed(1);
+// ─── HUD Label ────────────────────────────────────────────────────────────────
 
-  return null; // shadow calcs happen via Three.js shadow maps
+function CompassLabel({ position, text }: { position: [number, number, number]; text: string }) {
+  return (
+    <Html center position={position}>
+      <div className="text-[9px] font-black text-green-400 tracking-[0.25em] uppercase opacity-50 px-2 py-0.5 border border-green-400/20 rounded whitespace-nowrap bg-black/30 backdrop-blur-sm pointer-events-none">
+        {text}
+      </div>
+    </Html>
+  );
 }
 
-export default function RooftopScene({ panels, sunAngle, panelColors, timeOfDay, optimalTilt }: RooftopSceneProps) {
-  const panelPositions = useMemo(() => {
-    return panels.map((p, i) => {
-      const col = i % 6;
-      const row = Math.floor(i / 6);
-      return {
-        ...p,
-        position: [-2.5 + col * 1.2, 0, -2 + row * 1.0] as [number, number, number],
-      };
-    });
-  }, [panels]);
+// ─── Interactive Ground (Crop Mode Click Handler) ─────────────────────────────
+
+function ClickPlane({
+  centerLat, centerLng, isCropping, onPointAdd,
+}: {
+  centerLat: number; centerLng: number; isCropping: boolean;
+  onPointAdd: (lat: number, lng: number) => void;
+}) {
+  const handleClick = (e: any) => {
+    if (!isCropping) return;
+    e.stopPropagation();
+    const pt: THREE.Vector3 = e.point;
+    // Reverse local→latlng
+    const cosLat = Math.cos((centerLat * Math.PI) / 180);
+    const lng = centerLng + pt.x / (111320 * cosLat);
+    const lat = centerLat - pt.z / 111320; // z is negative north
+    onPointAdd(lat, lng);
+  };
 
   return (
-    <Canvas
-      camera={{ position: [8, 8, 8], fov: 45 }}
-      shadows="soft"
-      style={{ background: 'transparent' }}
-      gl={{ alpha: true, antialias: true }}
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0.01, 0]}
+      onClick={handleClick}
+      visible={false}
     >
-      <color attach="background" args={['#0A0F1E']} />
-      <fog attach="fog" args={['#0A0F1E', 15, 50]} />
+      <planeGeometry args={[500, 500]} />
+      <meshBasicMaterial transparent opacity={0} />
+    </mesh>
+  );
+}
 
-      <ambientLight intensity={0.15} />
+// ─── Main Scene (inside Canvas) ───────────────────────────────────────────────
+
+function SceneContent({
+  panels, panelColors, timeOfDay, optimalTilt,
+  polygon, center, isCropping, isScanning,
+  onPolygonUpdate, onMetricsUpdate,
+}: RooftopSceneProps) {
+  const [panelStats, setPanelStats] = useState<SolarPanel3D[]>(panels);
+
+  // Sync panels when parent changes them
+  useEffect(() => { setPanelStats(panels); }, [panels]);
+
+  // Convert lat/lng polygon to local scene coordinates
+  const localPolygon = useMemo(() =>
+    polygon.map(([lat, lng]) => {
+      const [x, z] = latlngToLocal(lat, lng, center.lat, center.lng);
+      return { x, z };
+    }),
+    [polygon, center]
+  );
+
+  // Report shadow metrics upward
+  useEffect(() => {
+    const shadowed = panelStats.filter((p) => p.inShadow).length;
+    const impact = panels.length > 0 ? (shadowed / panels.length) * 100 : 0;
+    onMetricsUpdate?.({ totalShadowImpact: impact, avgEfficiency: 100 - impact });
+  }, [panelStats]);
+
+  const siteR = 60; // compass label radius
+
+  return (
+    <>
+      <ambientLight intensity={1.8} />
       <SunOrb timeOfDay={timeOfDay} />
-      <ShadowIndicator timeOfDay={timeOfDay} />
+      <fog attach="fog" args={['#020617', 200, 800]} />
 
-      <Rooftop />
-      <Ground />
-      <NearbyBuildings />
-      <Trees />
-      <GridFloor />
+      {/* GIS Satellite Layer */}
+      <SatelliteGround centerLat={center.lat} centerLng={center.lng} />
 
-      {panelPositions.map((p) => (
-        <Panel
+      {/* Click plane for polygon crop */}
+      <ClickPlane
+        centerLat={center.lat}
+        centerLng={center.lng}
+        isCropping={!!isCropping}
+        onPointAdd={(lat, lng) => onPolygonUpdate?.([...polygon, [lat, lng]])}
+      />
+
+      {/* Rooftop Polygon Overlay */}
+      {localPolygon.length >= 3 && <RooftopPolygon points={localPolygon} />}
+
+      {/* Active cropping markers */}
+      {isCropping && (
+        <CropOverlay
+          points={localPolygon}
+          centroidLat={center.lat}
+          centroidLng={center.lng}
+        />
+      )}
+
+      {/* Solar Panels — positioned in local scene coords */}
+      {panelStats.map((p) => (
+        <SolarPanel
           key={p.id}
           position={p.position}
-          color={panelColors[p.type] || '#1a3a5a'}
-          tiltDegrees={optimalTilt}
+          color={panelColors[p.type] || '#1a3a5e'}
+          tiltDeg={optimalTilt}
+          inShadow={p.inShadow}
         />
       ))}
 
-      <OrbitControls
-        enablePan
-        enableZoom
-        enableRotate
-        maxPolarAngle={Math.PI / 2.2}
-        minDistance={5}
-        maxDistance={25}
-        target={[0, 0, 0]}
+      {/* AI Scan Overlay */}
+      {isScanning && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.2, 0]}>
+          <planeGeometry args={[200, 200]} />
+          <meshBasicMaterial color="#6366F1" transparent opacity={0.2} side={THREE.DoubleSide} />
+          <Html center>
+            <div className="flex flex-col items-center gap-3 pointer-events-none">
+              <div className="w-14 h-14 border-4 border-green-400 border-t-transparent animate-spin rounded-full" />
+              <div className="px-4 py-2 rounded-lg bg-black/60 text-green-400 font-black uppercase tracking-widest text-[10px] border border-green-400/30 backdrop-blur-sm">
+                AI Scanning Imagery
+              </div>
+            </div>
+          </Html>
+        </mesh>
+      )}
+
+      {/* Shadow Analysis */}
+      <ShadowAnalyzer panels={panels} timeOfDay={timeOfDay} onUpdate={setPanelStats} />
+
+      {/* Engineering Grid */}
+      <Grid
+        position={[0, -0.01, 0]}
+        args={[300, 300]}
+        cellSize={5}
+        cellThickness={0.15}
+        cellColor="#00E5A0"
+        sectionSize={25}
+        sectionThickness={0.4}
+        sectionColor="#00E5A0"
+        fadeDistance={80}
+        fadeStrength={3}
       />
-    </Canvas>
+
+      {/* Compass HUD */}
+      <CompassLabel position={[0, 0.5, -siteR]} text="▲ NORTH" />
+      <CompassLabel position={[0, 0.5, siteR]} text="▼ SOUTH" />
+      <CompassLabel position={[siteR, 0.5, 0]} text="▶ EAST" />
+      <CompassLabel position={[-siteR, 0.5, 0]} text="◀ WEST" />
+
+      {/* Locked Camera */}
+      <OrbitControls
+        target={[0, 0, 0]}
+        maxPolarAngle={Math.PI / 2.05}
+        minDistance={8}
+        maxDistance={120}
+        makeDefault
+        enableDamping
+        dampingFactor={0.07}
+        enablePan
+        screenSpacePanning
+        panSpeed={0.8}
+      />
+    </>
+  );
+}
+
+// ─── Root Export ──────────────────────────────────────────────────────────────
+
+export default function RooftopScene(props: RooftopSceneProps) {
+  const { center, polygon, optimalTilt } = props;
+  const centroidLat =
+    polygon.length > 0
+      ? polygon.reduce((s, p) => s + p[0], 0) / polygon.length
+      : center.lat;
+  const centroidLng =
+    polygon.length > 0
+      ? polygon.reduce((s, p) => s + p[1], 0) / polygon.length
+      : center.lng;
+
+  return (
+    <div className="relative w-full h-full">
+      {/* GIS HUD Overlay */}
+      <div className="absolute top-4 left-4 z-20 pointer-events-none">
+        <div className="rounded-xl p-3 border border-green-400/20 bg-black/50 backdrop-blur-xl shadow-2xl space-y-1 min-w-[150px]">
+          <p className="text-[9px] font-black text-white/40 uppercase tracking-widest">GIS Anchor</p>
+          <p className="text-[11px] font-mono text-green-400">{centroidLat.toFixed(5)}° N</p>
+          <p className="text-[11px] font-mono text-green-400">{centroidLng.toFixed(5)}° E</p>
+          <div className="border-t border-white/10 pt-1 mt-1">
+            <p className="text-[9px] text-white/40">Tilt: <span className="text-amber-400 font-mono">{optimalTilt.toFixed(1)}°</span></p>
+            <p className="text-[9px] text-white/40">Azimuth: <span className="text-amber-400 font-mono">180° S</span></p>
+          </div>
+        </div>
+      </div>
+
+      {/* Mode Badge */}
+      <div className="absolute top-4 right-4 z-20 pointer-events-none">
+        <div className="px-3 py-1.5 rounded-full bg-black/60 border border-green-400/30 backdrop-blur-xl">
+          <span className="text-[9px] font-black text-green-400 uppercase tracking-widest">
+            {props.isCropping ? '✏ CROP MODE — Click to add points' : '⬡ AR DESIGN MODE'}
+          </span>
+        </div>
+      </div>
+
+      <Canvas
+        camera={{ position: [0, 60, 60], fov: 40, near: 0.1, far: 1000 }}
+        shadows="soft"
+        style={{ background: '#020617' }}
+        gl={{
+          alpha: false,
+          antialias: true,
+          logarithmicDepthBuffer: true,
+          powerPreference: 'high-performance',
+        }}
+      >
+        <SceneContent {...props} />
+      </Canvas>
+    </div>
   );
 }
