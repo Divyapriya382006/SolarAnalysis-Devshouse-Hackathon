@@ -9,6 +9,7 @@
         "./src/*"
       ]
     },
+    
     "skipLibCheck": true,
     "strictNullChecks": false
   },
